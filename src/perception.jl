@@ -114,6 +114,8 @@ function perception_h(x_other, x_ego, cam_id)
     left_cnr = [0 0 0]
     bot_cnr = [0 0 0]
     right_cnr = [0 0 0]
+    corner_ids = [0 0 0 0] # top, left, bot, right
+    iter = 1
     # we are basically getting through each corner values in camera frame and 
     # keep updating the left, top, bottom, right values!
     for corner in corners_of_other_vehicle
@@ -128,21 +130,27 @@ function perception_h(x_other, x_ego, cam_id)
         # first update the corners
         if px < left
             left_cnr = corner
+            corner_ids[2] = iter
         end
         if px > right
             right_cnr = corner
+            corner_ids[4] = iter
         end
         if py < top
             top_cnr = corner
+            corner_ids[1] = iter
         end
         if py > bot
             bot_cnr = corner
+            corner_ids[3] = iter
         end
 
         left = min(left, px)
         right = max(right, px)
         top = min(top, py)
         bot = max(bot, py)
+
+        iter = iter + 1
     end
     corners = [top_cnr, left_cnr, bot_cnr, right_cnr]
 
@@ -167,23 +175,67 @@ function perception_h(x_other, x_ego, cam_id)
     end
 
 
-    return bbox, bbox_unrounded, corners
+    return bbox, corner_ids, corners
 end
 
 
-function calculate_J1_for_jac_hx(x_other)
+function calculate_J1_for_jac_hx(corner, corner_id, x_other)
     # In perception_h, corners are set in the following format: 
     # corners = [top_cnr, left_cnr, bot_cnr, right_cnr]
+    l_mult = 0
+    w_mult = 0
+    h_mult = 0
+    if corner_id == 1
+        l_mult = 1
+        w_mult = -1
+        h_mult = -1
+    elseif corner_id == 2
+        l_mult = -1
+        w_mult = -1
+        h_mult = -1
+    elseif corner_id == 3
+        l_mult = 1
+        w_mult = 1
+        h_mult = -1
+    elseif corner_id == 4
+        l_mult = -1
+        w_mult = 1
+        h_mult = -1
+    elseif corner_id == 5
+        l_mult = 1
+        w_mult = -1
+        h_mult = 1
+    elseif corner_id == 6
+        l_mult = -1
+        w_mult = -1
+        h_mult = 1
+    elseif corner_id == 7
+        l_mult = 1
+        w_mult = 1
+        h_mult = 1
+    else
+        l_mult = -1
+        w_mult = 1
+        h_mult = 1
+    end
+
+    theta = x_other[3]
+    l = 13.2
+    w = 5.7
+    h = 5.3
+
+    [1 0 (0.5*(-sin(theta)*l_mult*l-cos(theta)*w_mult*w)) 0 (0.5*(cos(theta)*l_mult)) (0.5*(-sin(theta)*w_mult)) 0
+        0 1 (0.5*(cos(theta)*l_mult*l+sin(theta)*w_mult*w)) 0 (0.5*sin(theta)*l_mult) (0.5*(-cos(theta)*w_mult)) 0
+        0 0 0 0 0 0 (0.5+h_mult*0.5)]
+
 
 
 
 end
 
-function perception_jac_hx(corner, x_other, x_ego, cam_id)
-
-
+function perception_jac_hx(corner, corner_id, x_other, x_ego, cam_id)
     # Calculate J1
-
+    J1 = calculate_J1_for_jac_hx(corner, corner_id, x_other) # do i even need the corner values..? i can just have cornder_id to figure out l_mult and w_mult and h_mult
 
     # Calculate J2 -- confirmed it's correct
     T_body_cam1 = get_cam_transform(1)
@@ -249,7 +301,7 @@ function perception_ekf(xego, delta_t, cam_id)
     for k = 1:num_steps # for k = 1:something
         xk = perception_f(x_prev, delta_t)
         x_prev = xk
-        zk, bbox_unrounded, corners = perception_h(xk, xego, cam_id)
+        zk, corner_ids, corners = perception_h(xk, xego, cam_id)
 
         # *All of the equations below are referenced from L17 pg.3 and HW4
         # Process model: P(xk | xk-1, bbxk) = N(A*x-1, sig_carrot))
@@ -263,10 +315,11 @@ function perception_ekf(xego, delta_t, cam_id)
         # Measurement model
         # In perception_h, corners are set in the following format: 
         # corners = [top_cnr, left_cnr, bot_cnr, right_cnr]
-        C_top = perception_jac_hx(corners[1], mu_carrot, xego, cam_id)
-        C_left = perception_jac_hx(corners[2], mu_carrot, xego, cam_id)
-        C_bot = perception_jac_hx(corners[3], mu_carrot, xego, cam_id)
-        C_right = perception_jac_hx(corners[4], mu_carrot, xego, cam_id)
+        # *NOTE: might have to take only the top or bottom row depending the corner
+        C_top = perception_jac_hx(corners[1], corner_ids[1], mu_carrot, xego, cam_id)
+        C_left = perception_jac_hx(corners[2], corner_ids[2], mu_carrot, xego, cam_id)
+        C_bot = perception_jac_hx(corners[3], corner_ids[3], mu_carrot, xego, cam_id)
+        C_right = perception_jac_hx(corners[4], corner_ids[4], mu_carrot, xego, cam_id)
 
         # now stack them up to have a 4 x 7 matrix
         C = [C_top; C_left; C_bot; C_right]
