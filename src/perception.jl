@@ -50,13 +50,6 @@ function convert_to_pixel_unrounded(num_pixels, pixel_len, px)
     return pix_id
 end
 
-function convert_to_pixel_unrounded(num_pixels, pixel_len, px)
-    min_val = -pixel_len * num_pixels / 2
-    pix_id = (px - min_val) / pixel_len
-    return pix_id
-end
-
-
 """
     Usage:
         - should be called per camera
@@ -227,10 +220,6 @@ function calculate_J1_for_jac_hx(corner, corner_id, x_other)
     [1 0 (0.5*(-sin(theta)*l_mult*l-cos(theta)*w_mult*w)) 0 (0.5*(cos(theta)*l_mult)) (0.5*(-sin(theta)*w_mult)) 0
         0 1 (0.5*(cos(theta)*l_mult*l+sin(theta)*w_mult*w)) 0 (0.5*sin(theta)*l_mult) (0.5*(-cos(theta)*w_mult)) 0
         0 0 0 0 0 0 (0.5+h_mult*0.5)]
-
-
-
-
 end
 
 function perception_jac_hx(corner, corner_id, x_other, x_ego, cam_id)
@@ -322,7 +311,9 @@ function perception_ekf(xego, delta_t, cam_id)
         C_right = perception_jac_hx(corners[4], corner_ids[4], mu_carrot, xego, cam_id)
 
         # now stack them up to have a 4 x 7 matrix
-        C = [C_top; C_left; C_bot; C_right]
+        # We only care about the top row - for left or right
+        # We only care about the bottom row - for top or bottom
+        C = [C_top[2, :]; C_left[1, :]; C_bot[2, :]; C_right[1, :]]
         sigma_k = inv(inv(sig_carrot) + C' * inv(covariance_z) * C)
         mu_k = sigma_k * (inv(sigma_carrot) * mu_carrot + C' * inv(covariance_z) * zk)
 
