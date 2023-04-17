@@ -86,10 +86,16 @@ function jacf(position, q, velocity, angular_vel, t)
         1 0 0 0 0 0 0 t 0 0 0 0 0;
         0 1 0 0 0 0 0 0 t 0 0 0 0;
         0 0 1 0 0 0 0 0 0 t 0 0 0;
-        0 0 0 sᵣ -[1 q[2] q[3]]*vᵣ [q[1] 1 q[3]]*vᵣ [q[1] q[2] 1]*vᵣ 0 0 0 gradrsv[1, 1] gradrsv[1, 2] gradrsv[1, 3]
-        0 0 0 vᵣ[1] sᵣ sin(mag*t/2)*r[3]/mag -sin(mag*t/2)*r[2]/mag 0 0 0 gradrsv[2, 1] gradrsv[2, 2] gradrsv[2, 3]
-        0 0 0 vᵣ[2] sin(mag*t/2)*r[3]/mag sᵣ -sin(mag*t/2)*r[1]/mag 0 0 0 gradrsv[3, 1] gradrsv[3, 2] gradrsv[3, 3]
+        0 0 0 sᵣ -[1 q[2] q[3]]*vᵣ [q[1] 1 q[3]]*vᵣ [q[1] q[2] 1]*vᵣ 0 0 0 gradrsv[1, 1] gradrsv[1, 2] gradrsv[1, 3];
+        0 0 0 vᵣ[1] sᵣ sin(mag*t/2)*r[3]/mag -sin(mag*t/2)*r[2]/mag 0 0 0 gradrsv[2, 1] gradrsv[2, 2] gradrsv[2, 3];
+        0 0 0 vᵣ[2] sin(mag*t/2)*r[3]/mag sᵣ -sin(mag*t/2)*r[1]/mag 0 0 0 gradrsv[3, 1] gradrsv[3, 2] gradrsv[3, 3];
         0 0 0 vᵣ[3] sin(mag*t/2)*r[2]/mag -sin(mag*t/2)*r[1]/mag sᵣ 0 0 0 gradrsv[4, 1] gradrsv[4, 2] gradrsv[4, 3]
+        0 0 0 0 0 0 0 1 0 0 0 0 0;
+        0 0 0 0 0 0 0 0 1 0 0 0 0;
+        0 0 0 0 0 0 0 0 0 1 0 0 0;
+        0 0 0 0 0 0 0 0 0 0 1 0 0;
+        0 0 0 0 0 0 0 0 0 0 0 1 0;
+        0 0 0 0 0 0 0 0 0 0 0 0 1;
     ]
 
     # @info jac
