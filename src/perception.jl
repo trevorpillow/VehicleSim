@@ -239,15 +239,15 @@ function perception_jac_hx(corner, corner_id, x_other, x_ego, cam_id)
     T_world_camrot1 = multiply_transforms(T_world_body, T_body_camrot1)
     T_world_camrot2 = multiply_transforms(T_world_body, T_body_camrot2)
 
-    J2 = invert_transform(T_world_camrot1) # defulat to camera 1
+    T_Rt = invert_transform(T_world_camrot1) # defulat to camera 1 - default is 3x4 --> take only the first 3 columns
     if cam_id == 2
-        J2 = invert_transform(T_world_camrot2)
+        T_Rt = invert_transform(T_world_camrot2)
     end
+    J2 = T_Rt[:, 1:3]
 
     # Calculate J3
     J3 = [1/c[3] 0 -c[1]/(c[3])^2
         0 1/c[3] -c[2]/(c[3])^2]
-
 
     # Calculate J4 -- confirmed it's correct
     pixel_len = 0.001
@@ -309,11 +309,17 @@ function perception_ekf(xego, delta_t, cam_id)
         C_left = perception_jac_hx(corners[2], corner_ids[2], mu_carrot, xego, cam_id)
         C_bot = perception_jac_hx(corners[3], corner_ids[3], mu_carrot, xego, cam_id)
         C_right = perception_jac_hx(corners[4], corner_ids[4], mu_carrot, xego, cam_id)
+        # for debugging
+        display("C_top, C_left, C_bot, C_right")
+        display(C_top)
+        display(C_left)
+        display(C_bot)
+        display(C_right)
 
         # now stack them up to have a 4 x 7 matrix
-        # We only care about the top row - for left or right
-        # We only care about the bottom row - for top or bottom
-        C = [C_top[2, :]; C_left[1, :]; C_bot[2, :]; C_right[1, :]]
+        # We only care about the top row for left and right
+        # We only care about the bottom row for top and bottom
+        C = [C_top[2, :]; C_left[1, :]; C_bot[2, :]; C_right[1, :]] # double check the order retrurned from h
         sigma_k = inv(inv(sig_carrot) + C' * inv(covariance_z) * C)
         mu_k = sigma_k * (inv(sigma_carrot) * mu_carrot + C' * inv(covariance_z) * zk)
 
