@@ -63,3 +63,16 @@ function angle_(p, c)
     θ = atan(p̂[2], p̂[1])
     θ = θ > 0 ? θ : θ + 2 * π
 end
+
+function plot_map(map_segments)
+    x = []
+    y = []
+    for (id, segment) in map_segments
+        push!(x, segment.lane_boundaries[1].pt_a[1])
+        push!(y, segment.lane_boundaries[1].pt_a[2])
+        push!(x, segment.lane_boundaries[1].pt_b[1])
+        push!(y, segment.lane_boundaries[1].pt_b[2])
+    end
+
+    scatter(x, y, markercolor=:yellow)
+end

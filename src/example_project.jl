@@ -180,15 +180,14 @@ function decision_making(localization_state_channel,
 
     # 3. 
 
-    #@async while isready(gt_channel)
-    #    gt_meas = take!(gt_channel)
-    #end
-
     t = gt_meas.time
     for n in 1:15
         sleep(1)
         while isready(gt_channel)
-            gt_meas = take!(gt_channel)
+            meas = take!(gt_channel)
+            if meas.time > gt_meas.time
+                gt_meas = meas
+            end
         end
         #latest_localization_state = fetch(localization_state_channel)
         #println(latest_localization_state)
