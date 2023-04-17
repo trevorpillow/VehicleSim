@@ -102,14 +102,15 @@ function localize(gps_channel, imu_channel, localization_state_channel, gt_chann
             push!(fresh_imu_meas, meas)
         end
 
-        # process measurements
-
         # Using GT until we get a real algorithm
         gt = fetch(gt_channel)
         latlong = gt.position[1:2]
+        
+        # process measurements
+        jacf(gt.orientation, gt.orientation, gt.velocity, gt.angular_velocity, 5)
 
         localization_state = MyLocalizationType(latlong, gt.velocity, gt.angular_velocity, gt.time)
-        # @info localization_state
+        
         if isready(localization_state_channel)
             take!(localization_state_channel)
         end
