@@ -26,6 +26,7 @@ include("measurements.jl")
 include("map.jl")
 include("perception.jl")
 include("example_project.jl")
+include("localization.jl")
 
 export server, shutdown!, keyboard_client, my_client
 
