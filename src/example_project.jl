@@ -166,17 +166,51 @@ end
 
 function decision_making(localization_state_channel,
     perception_state_channel,
-    map,
-    target_road_segment_id,
-    socket)
+    map_segments,
+    target_segment_id,
+    socket, gt_channel)
+
     # do some setup
-    while true
-        latest_localization_state = fetch(localization_state_channel)
-        latest_perception_state = fetch(perception_state_channel)
+
+    # 1. Find current map segment
+    gt_meas = take!(gt_channel)
+    start_segment_id = find_segment(gt_meas.position[1:2], map_segments)
+
+    # 2. Find shortest path to target segment
+
+    # 3. 
+
+    #@async while isready(gt_channel)
+    #    gt_meas = take!(gt_channel)
+    #end
+
+    t = gt_meas.time
+    for n in 1:15
+        sleep(1)
+        while isready(gt_channel)
+            gt_meas = take!(gt_channel)
+        end
+        #latest_localization_state = fetch(localization_state_channel)
+        #println(latest_localization_state)
+
+        #latest_perception_state = fetch(perception_state_channel)
+
+        #gt_meas = take!(gt_channel)
+        #print(gt_meas.time)
+        #print("   ")
+        println(gt_meas.position[1:2])
+
+
 
         # figure out what to do ... setup motion planning problem etc
         steering_angle = 0.0
         target_vel = 0.0
+        if n > 5
+            target_vel = 5.0
+        end
+        if n > 10
+            target_vel = 0.0
+        end
         cmd = VehicleCommand(steering_angle, target_vel, true)
         serialize(socket, cmd)
     end
@@ -201,7 +235,7 @@ function my_client(host::IPAddr=IPv4(0), port=4444)
     gt_channel = Channel{GroundTruthMeasurement}(32)
 
     localization_state_channel = Channel{MyLocalizationType}(1)
-    #perception_state_channel = Channel{MyPerceptionType}(1)
+    perception_state_channel = Channel{MyPerceptionType}(1)
 
     target_map_segment = 0 # (not a valid segment, will be overwritten by message)
     ego_vehicle_id = 0 # (not a valid id, will be overwritten by message. This is used for discerning ground-truth messages)
@@ -238,8 +272,8 @@ function my_client(host::IPAddr=IPv4(0), port=4444)
     end)
 
     # @async 
-    localize(gps_channel, imu_channel, localization_state_channel, gt_channel) #FIXME: Remove gt channel once ready
+    #@async localize(gps_channel, imu_channel, localization_state_channel, gt_channel) #FIXME: Remove gt channel once ready
     # @async perception(cam_channel, localization_state_channel, perception_state_channel)
-    # @async decision_making(localization_state_channel, perception_state_channel, map, socket)
+    @async decision_making(localization_state_channel, perception_state_channel, map_segments, target_map_segment, socket, gt_channel)
     # @async test_algorithms(gt_channel, localization_state_channel, perception_state_channel, ego_vehicle_id)
 end
