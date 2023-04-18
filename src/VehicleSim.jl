@@ -16,6 +16,7 @@ using Sockets
 using Serialization
 using StaticArrays
 using DifferentialEquations
+using DataStructures
 
 include("view_car.jl")
 include("objects.jl")

@@ -61,18 +61,95 @@ end
 function angle_(p, c)
     p̂ = (p - c) / norm(p - c)
     θ = atan(p̂[2], p̂[1])
-    θ = θ > 0 ? θ : θ + 2 * π
+    θ = θ > 0 - 0.00001 ? θ : θ + 2 * π
 end
 
-function plot_map(map_segments)
-    x = []
-    y = []
-    for (id, segment) in map_segments
-        push!(x, segment.lane_boundaries[1].pt_a[1])
-        push!(y, segment.lane_boundaries[1].pt_a[2])
-        push!(x, segment.lane_boundaries[1].pt_b[1])
-        push!(y, segment.lane_boundaries[1].pt_b[2])
+function segment_length(segment)
+    if segment.lane_boundaries[1].curvature == 0
+        return norm(end_midpoint(segment) - midpoint(segment.lane_boundaries[1].pt_a, segment.lane_boundaries[2].pt_a))
+    else
+        center = center_of_curve(segment)
+        inner_radius, outer_radius = radii(segment)
+        start_angle = angle_(segment.lane_boundaries[1].pt_a, center)
+        end_angle = angle_(segment.lane_boundaries[1].pt_b, center)
+        return (end_angle - start_angle) * (outer_radius + inner_radius) / 2
+    end
+end
+
+function midpoint(a::SVector{2,Float64}, b::SVector{2,Float64})
+    a + (b - a) / 2
+end
+
+function end_midpoint(segment)
+    midpoint(segment.lane_boundaries[1].pt_b, segment.lane_boundaries[2].pt_b)
+end
+
+function target_point(segment)
+    num_lane_bounds = length(segment.lane_boundaries)
+    if segment.lane_boundaries[1].curvature == 0
+        mid_start = midpoint(segment.lane_boundaries[num_lane_bounds - 1].pt_a, segment.lane_boundaries[num_lane_bounds].pt_a)
+        mid_end = midpoint(segment.lane_boundaries[num_lane_bounds - 1].pt_b, segment.lane_boundaries[num_lane_bounds].pt_b)
+        return midpoint(mid_start, mid_end)
+    else
+        center = center_of_curve(segment)
+        inner_radius, outer_radius = radii(segment)
+        mid = midpoint(segment.lane_boundaries[1].pt_a, segment.lane_boundaries[1].pt_b)
+        return center + (mid - center) / norm(mid - center) * (outer_radius + inner_radius) / 2
+    end
+end
+
+function heuristic(map_segments, segment_id, target_id)
+    norm(target_point(map_segments[target_id]) - end_midpoint(map_segments[segment_id]))
+end
+
+function cost_function(map_segments, segment_id)
+    segment_length(map_segments[segment_id])
+end
+
+function a_star(map_segments, start_id, target_id)
+    open_set = PriorityQueue{Int, Float64}()
+    enqueue!(open_set, start_id, 0.0)
+
+    g_scores = Dict{Int, Float64}()
+    f_scores = Dict{Int, Float64}()
+    h_scores = Dict{Int, Float64}()
+    g_scores[start_id] = 0.0
+    h_scores[start_id] = heuristic(map_segments, start_id, target_id)
+    f_scores[start_id] = h_scores[start_id]
+    ancestors = Dict{Int, Int}()
+
+    while !isempty(open_set)
+        current_id = dequeue!(open_set)
+
+        if current_id == target_id
+            return construct_path(ancestors, start_id, target_id)
+        end
+
+        for child_id in map_segments[current_id].children
+            tentative_g_score = g_scores[current_id] + cost_function(map_segments, child_id)
+            
+            if !(child_id in keys(g_scores)) || tentative_g_score < g_scores[child_id]
+                g_scores[child_id] = tentative_g_score
+                h_scores[child_id] = heuristic(map_segments, child_id, target_id)
+                f_scores[child_id] = g_scores[child_id] + h_scores[child_id]
+                ancestors[child_id] = current_id
+
+                if !haskey(open_set, child_id)
+                    enqueue!(open_set, child_id, f_scores[child_id])
+                end
+            end
+        end
     end
 
-    scatter(x, y, markercolor=:yellow)
+    return [] # Return an empty array if no path is found
+end
+
+function construct_path(ancestors, start_id, target_id)
+    path = [target_id]
+    current_id = target_id
+    while current_id != start_id
+        current_id = ancestors[current_id]
+        push!(path, current_id)
+    end
+    path
 end

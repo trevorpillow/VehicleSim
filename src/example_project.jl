@@ -167,14 +167,14 @@ end
 function decision_making(localization_state_channel,
     perception_state_channel,
     map_segments,
-    target_segment_id,
+    target_id,
     socket, gt_channel)
 
     # do some setup
 
     # 1. Find current map segment
     gt_meas = take!(gt_channel)
-    start_segment_id = find_segment(gt_meas.position[1:2], map_segments)
+    start_id = find_segment(gt_meas.position[1:2], map_segments)
 
     # 2. Find shortest path to target segment
 
