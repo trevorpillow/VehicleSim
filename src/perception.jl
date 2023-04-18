@@ -172,7 +172,7 @@ function perception_h(x_other, x_ego, cam_id)
 end
 
 
-function calculate_J1_for_jac_hx(corner, corner_id, x_other)
+function calculate_J1_for_jac_hx(corner_id, x_other)
     # In perception_h, corners are set in the following format: 
     # corners = [top_cnr, left_cnr, bot_cnr, right_cnr]
     l_mult = 0
@@ -224,7 +224,7 @@ end
 
 function perception_jac_hx(corner, corner_id, x_other, x_ego, cam_id)
     # Calculate J1
-    J1 = calculate_J1_for_jac_hx(corner, corner_id, x_other) # do i even need the corner values..? i can just have cornder_id to figure out l_mult and w_mult and h_mult
+    J1 = calculate_J1_for_jac_hx(corner_id, x_other) # do i even need the corner values..? i can just have cornder_id to figure out l_mult and w_mult and h_mult
 
     # Calculate J2 -- confirmed it's correct
     T_body_cam1 = get_cam_transform(1)
@@ -246,8 +246,8 @@ function perception_jac_hx(corner, corner_id, x_other, x_ego, cam_id)
     J2 = T_Rt[:, 1:3]
 
     # Calculate J3
-    J3 = [1/c[3] 0 -c[1]/(c[3])^2
-        0 1/c[3] -c[2]/(c[3])^2]
+    J3 = [1/corner[3] 0 -corner[1]/(corner[3])^2
+        0 1/corner[3] -corner[2]/(corner[3])^2]
 
     # Calculate J4 -- confirmed it's correct
     pixel_len = 0.001
