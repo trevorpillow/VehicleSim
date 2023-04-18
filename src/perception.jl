@@ -30,7 +30,7 @@ function perception_get_3d_bbox_corners(x, box_size)
     theta = x[3]
     # referenced L20 pg.4 as well
     R = [cos(theta) -sin(theta) 0; sin(theta) cos(theta) 0; 0 0 1]
-    xyz = [x[1] x[2] box_size[3] / 2]
+    xyz = [x[1], x[2], box_size[3] / 2]
     T = [R xyz]
     corners = []
 
@@ -44,12 +44,6 @@ function perception_get_3d_bbox_corners(x, box_size)
     corners
 end
 
-function convert_to_pixel_unrounded(num_pixels, pixel_len, px)
-    min_val = -pixel_len * num_pixels / 2
-    pix_id = (px - min_val) / pixel_len
-    return pix_id
-end
-
 """
     Usage:
         - should be called per camera
@@ -60,7 +54,8 @@ end
 """
 function perception_h(x_other, x_ego, cam_id)
     # constant variables
-    vehicle_size = SVector(13.2, 5.7, 5.3)
+    # vehicle_size = SVector(13.2, 5.7, 5.3)
+    vehicle_size = [13.2 5.7 5.3]
     focal_len = 0.01
     pixel_len = 0.001
     image_width = 640
@@ -68,7 +63,11 @@ function perception_h(x_other, x_ego, cam_id)
     # num_vehicles = length(x_other)
 
     corners_body = [perception_get_3d_bbox_corners(x_other, vehicle_size)]
-    @debug corners_body
+    num_corners = length(corners_body)
+
+    display("corners_body")
+    display(corners_body)
+    println()
 
     # Section 1: Get transformation matrices
     T_body_cam1 = get_cam_transform(1)
@@ -79,7 +78,10 @@ function perception_h(x_other, x_ego, cam_id)
     T_body_camrot2 = multiply_transforms(T_body_cam2, T_cam_camrot)
 
     # make sure the ego state you get from localization team follows the same format
-    T_world_body = get_body_transform(x_ego.q[1:4], x_ego.q[5:7]) # get_body_transform(quat, loc)
+    # below is the real code:
+    # T_world_body = get_body_transform(x_ego.q[1:4], x_ego.q[5:7]) # get_body_transform(quat, loc)
+    # below is for testing/debugging:
+    T_world_body = get_body_transform(x_ego[1:4], x_ego[5:7])
     T_world_camrot1 = multiply_transforms(T_world_body, T_body_camrot1)
     T_world_camrot2 = multiply_transforms(T_world_body, T_body_camrot2)
 
@@ -87,6 +89,9 @@ function perception_h(x_other, x_ego, cam_id)
     if cam_id == 2
         transform = invert_transform(T_world_camrot2)
     end
+    display("transform:")
+    display(transform)
+    println()
 
     # Section 2: Calculate the bounding boxes
     bbox = []
@@ -95,7 +100,13 @@ function perception_h(x_other, x_ego, cam_id)
 
     # NOTE: deal with having only 1 or 2 boxes here
     # similar to x_carrot = R * [q1 q2 q3] + t, turn points rotated cam frame
-    corners_of_other_vehicle = [transform * [pt; 1] for pt in corners_body[j]]
+    corners_of_other_vehicle = zeros(Float64, 8, 3)
+    for j = 1:num_corners
+        corners_of_other_vehicle = [transform * [pt; 1] for pt in corners_body[j]]
+    end
+    display("corners_of_other_vehicle")
+    display(corners_of_other_vehicle)
+    println()
 
     left = image_width / 2
     right = -image_width / 2
@@ -109,18 +120,29 @@ function perception_h(x_other, x_ego, cam_id)
     right_cnr = [0 0 0]
     corner_ids = [0 0 0 0] # top, left, bot, right
     iter = 1
+
+    # NOTE: DELETE THIS LATER
+    # MANUALLY CHANGING THE CORNER[3] VALUES SO THAT I CAN CREATE JACOBIANS
+    for j in corners_of_other_vehicle
+        j[3] = 3.3655137916157862
+    end
+
     # we are basically getting through each corner values in camera frame and 
     # keep updating the left, top, bottom, right values!
     for corner in corners_of_other_vehicle
+        display("corner[3]")
+        display(corner[3])
+        println()
+
         # every point of corner in camera frame now
         if corner[3] < focal_len
             break
         end
-
+        display("getting px and py")
         px = focal_len * corner[1] / corner[3]
         py = focal_len * corner[2] / corner[3]
 
-        # first update the corners
+        # update the corners
         if px < left
             left_cnr = corner
             corner_ids[2] = iter
@@ -144,29 +166,33 @@ function perception_h(x_other, x_ego, cam_id)
         bot = max(bot, py)
 
         iter = iter + 1
+        display("moving on to next iter")
     end
     corners = [top_cnr, left_cnr, bot_cnr, right_cnr]
+    display("corners done")
+    display(corners)
+    println()
 
+    # println(top)
+    # println(bot)
+    # println(left)
+    # println(right)
 
     if top ≈ bot || left ≈ right || top > bot || left > right
+        println("returning empty bbox")
         # out of frame - return empty bbox
-        return bbox
+        return bbox, corner_ids, corners
     else
         # update bbox
+        display("now converting to pixels")
         top = convert_to_pixel(image_height, pixel_len, top)
         bot = convert_to_pixel(image_height, pixel_len, bot)
         left = convert_to_pixel(image_width, pixel_len, left)
         right = convert_to_pixel(image_width, pixel_len, right)
         push!(bbox, SVector(top, left, bot, right))
-
-        # update bbox_unrounded
-        # top_ur = convert_to_pixel_unrounded(image_height, pixel_len, top)
-        # bot_ur = convert_to_pixel_unrounded(image_height, pixel_len, bot)
-        # left_ur = convert_to_pixel_unrounded(image_height, pixel_len, left)
-        # right_ur = convert_to_pixel_unrounded(image_height, pixel_len, right)
-        # push!(bbox_unrounded, SVector(top_ur, left_ur, bot_ur, right_ur))
     end
 
+    display("now returning perception_h")
 
     return bbox, corner_ids, corners
 end
@@ -226,6 +252,8 @@ function perception_jac_hx(corner, corner_id, x_other, x_ego, cam_id)
     # Calculate J1
     J1 = calculate_J1_for_jac_hx(corner_id, x_other) # do i even need the corner values..? i can just have cornder_id to figure out l_mult and w_mult and h_mult
 
+    # display("done with J1")
+
     # Calculate J2 -- confirmed it's correct
     T_body_cam1 = get_cam_transform(1)
     T_body_cam2 = get_cam_transform(2)
@@ -235,7 +263,10 @@ function perception_jac_hx(corner, corner_id, x_other, x_ego, cam_id)
     T_body_camrot2 = multiply_transforms(T_body_cam2, T_cam_camrot)
 
     # make sure the ego state you get from localization team follows the same format
-    T_world_body = get_body_transform(x_ego.q[1:4], x_ego.q[5:7]) # get_body_transform(quat, loc)
+    # below is the real code:
+    # T_world_body = get_body_transform(x_ego.q[1:4], x_ego.q[5:7]) # get_body_transform(quat, loc)
+    # below is for testing/debugging:
+    T_world_body = get_body_transform(x_ego[1:4], x_ego[5:7])
     T_world_camrot1 = multiply_transforms(T_world_body, T_body_camrot1)
     T_world_camrot2 = multiply_transforms(T_world_body, T_body_camrot2)
 
@@ -245,14 +276,22 @@ function perception_jac_hx(corner, corner_id, x_other, x_ego, cam_id)
     end
     J2 = T_Rt[:, 1:3]
 
+    # display("done with J2")
+
+
     # Calculate J3
     J3 = [1/corner[3] 0 -corner[1]/(corner[3])^2
         0 1/corner[3] -corner[2]/(corner[3])^2]
+
+    # display("done with J3")
+
 
     # Calculate J4 -- confirmed it's correct
     pixel_len = 0.001
     s = 1 / pixel_len
     J4 = [s 0; 0 s]
+    # display("done with J4")
+
 
     return J4 * J3 * J2 * J1
 end
