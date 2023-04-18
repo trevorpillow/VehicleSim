@@ -90,31 +90,41 @@ end
 
 function localize(gps_channel, imu_channel, localization_state_channel, gt_channel)
     # Set up algorithm / initialize variables
-    for n in 1:100
-        fresh_gps_meas = []
-        while isready(gps_channel)
-            meas = take!(gps_channel)
-            push!(fresh_gps_meas, meas)
-        end
-        fresh_imu_meas = []
-        while isready(imu_channel)
-            meas = take!(imu_channel)
-            push!(fresh_imu_meas, meas)
-        end
+    gps_measurements = []
+    fresh_imu_meas = []
+    lats_longs = []
+    while true
+
+        meas = take!(gps_channel)
+        push!(lats_longs, [meas.lat, meas.long])
+        push!(gps_measurements, meas)
+        meas = take!(imu_channel)
+        push!(fresh_imu_meas, meas)
+
+        estimate = mean(lats_longs)
+        
 
         # Using GT until we get a real algorithm
         gt = fetch(gt_channel)
         latlong = gt.position[1:2]
-        
+        @info "gt:"
+        @info latlong
+        @info "difference:"
+        @info (estimate - latlong)
+        # Consistently off, I believe by the offset of the gps vs center of car.
+        # Impossible to test without working client, but can find orientation of car by looking at road segment direction
+        # Messy at intersections but oh well, works better than current solution
+
+
         # process measurements
-        jacf(gt.orientation, gt.orientation, gt.velocity, gt.angular_velocity, 5)
+        # jacf(gt.orientation, gt.orientation, gt.velocity, gt.angular_velocity, 5)
 
         localization_state = MyLocalizationType(latlong, gt.velocity, gt.angular_velocity, gt.time)
         
-        if isready(localization_state_channel)
-            take!(localization_state_channel)
-        end
-        put!(localization_state_channel, localization_state)
+        # if isready(localization_state_channel)
+        #     take!(localization_state_channel)
+        # end
+        # put!(localization_state_channel, localization_state)
     end
 end
 

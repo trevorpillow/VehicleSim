@@ -15,6 +15,7 @@ using Suppressor
 using Sockets
 using Serialization
 using StaticArrays
+using Statistics
 
 include("view_car.jl")
 include("objects.jl")
