@@ -105,12 +105,12 @@ function localize(gps_channel, imu_channel, localization_state_channel, gt_chann
         # Using GT until we get a real algorithm
         gt = fetch(gt_channel)
         latlong = gt.position[1:2]
-        
+
         # process measurements
         jacf(gt.orientation, gt.orientation, gt.velocity, gt.angular_velocity, 5)
 
         localization_state = MyLocalizationType(latlong, gt.velocity, gt.angular_velocity, gt.time)
-        
+
         if isready(localization_state_channel)
             take!(localization_state_channel)
         end
@@ -130,38 +130,38 @@ function perception(cam_meas_channel, localization_state_channel, perception_sta
     #     image_height::Int # pixels
     #     bounding_boxes::Vector{SVector{4, Int}}
     # end
-
+    @info "Im in perception"
     while true
-
+        display("in while loop")
         """
             1. Get Camera measurements and ego car's localization
         """
         fresh_cam_meas = []
         while isready(cam_meas_channel)
+            display("cam_meas is ready")
             meas = take!(cam_meas_channel)
             push!(fresh_cam_meas, meas)
         end
+        display("now getting latest_localization_state")
         latest_localization_state = fetch(localization_state_channel)
 
-        """
-            2. Determine where the camera is looking at
-        """
-        # process bounding boxes / run ekf / do what you think is good
-
+        display("fresh_cam_meas and latest_localization_state")
+        display(fresh_cam_meas)
+        display(latest_localization_state)
 
         """
-            3. Run ekf
+            2. Run ekf
         """
-        # NOTE: ONE EKF PER VEHICLE SEEN
+        # NOTE: ONE EKF PER CAM PER VEHICLE SEEN
 
         """
-            4. Output the new perception state
+            3. Output the new perception state
         """
-        perception_state = MyPerceptionType(0, 0.0)
-        if isready(perception_state_channel)
-            take!(perception_state_channel)
-        end
-        put!(perception_state_channel, perception_state)
+        # perception_state = MyPerceptionType(0, 0.0)
+        # if isready(perception_state_channel)
+        #     take!(perception_state_channel)
+        # end
+        # put!(perception_state_channel, perception_state)
     end
 end
 
@@ -192,7 +192,7 @@ function my_client(host::IPAddr=IPv4(0), port=4444)
     socket = Sockets.connect(host, port)
 
     map_segments = VehicleSim.training_map()
-    
+
     msg = deserialize(socket) # Visualization info
     @info msg
 
@@ -202,7 +202,7 @@ function my_client(host::IPAddr=IPv4(0), port=4444)
     gt_channel = Channel{GroundTruthMeasurement}(32)
 
     localization_state_channel = Channel{MyLocalizationType}(1)
-    #perception_state_channel = Channel{MyPerceptionType}(1)
+    perception_state_channel = Channel{MyPerceptionType}(1)
 
     target_map_segment = 0 # (not a valid segment, will be overwritten by message)
     ego_vehicle_id = 0 # (not a valid id, will be overwritten by message. This is used for discerning ground-truth messages)
@@ -224,23 +224,36 @@ function my_client(host::IPAddr=IPv4(0), port=4444)
         end
         !received && continue
         target_map_segment = measurement_msg.target_segment
+        # display("target_map_segment")
+        # display(target_map_segment)
         ego_vehicle_id = measurement_msg.vehicle_id
+        # display("ego_vehicle_id")
+        # display(ego_vehicle_id)
         for meas in measurement_msg.measurements
+            # display("meas")
+            # display(meas)
             if meas isa GPSMeasurement
+                # display("gps meas")
+                # display(meas)
                 !isfull(gps_channel) && put!(gps_channel, meas)
             elseif meas isa IMUMeasurement
+                # display("imu meas")
+                # display(meas)
                 !isfull(imu_channel) && put!(imu_channel, meas)
             elseif meas isa CameraMeasurement
+                # display("CAM MEAS")
+                # display(meas)
                 !isfull(cam_channel) && put!(cam_channel, meas)
             elseif meas isa GroundTruthMeasurement
+                # display("Ground truth meas")
+                # display(meas)
                 !isfull(gt_channel) && put!(gt_channel, meas)
             end
         end
     end)
 
-    # @async 
-    localize(gps_channel, imu_channel, localization_state_channel, gt_channel) #FIXME: Remove gt channel once ready
-    # @async perception(cam_channel, localization_state_channel, perception_state_channel)
+    @async localize(gps_channel, imu_channel, localization_state_channel, gt_channel) #FIXME: Remove gt channel once ready
+    @async perception(cam_channel, localization_state_channel, perception_state_channel)
     # @async decision_making(localization_state_channel, perception_state_channel, map, socket)
     # @async test_algorithms(gt_channel, localization_state_channel, perception_state_channel, ego_vehicle_id)
 end

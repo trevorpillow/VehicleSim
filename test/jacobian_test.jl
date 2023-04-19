@@ -30,8 +30,10 @@ using Test
         ei = [0.0 0.0 0.0 0.0 0.0 0.0 0.0] # same length as x_other
         ei[i] = epsilon
         zxi, corner_ids, corners = VehicleSim.perception_h(x_other + ei, x_ego, cam_id)
-        Jxn[:, i] = (zxi - zx) / epsilon
+        df = (zxi - zx) / epsilon
+        @test isapprox(df, J[:, i])
+        # Jxn[:, i] = (zxi - zx) / epsilon
     end
-    @test isapprox(Jx, Jxn; atol=1e-6)
+    # @test isapprox(Jx, Jxn; atol=1e-6)
     # end
 end
