@@ -6,11 +6,17 @@ function perception_f(x, delta_t)
     # update xk = [p1 p2 theta vel l w h]
     # - updated-p1 = p1 + delta_time *cos(theta)*v
     # - updated-p2 = p2 + delta_time*sin(theta)*v
+    println("in perception_f")
     theta_k = x[3]
     vel_k = x[4]
     println(x)
-    println(delta_t * [vel_k * cos(theta_k), vel_k * sin(theta_k), 0, 0, 0, 0, 0])
-    x + delta_t * [vel_k * cos(theta_k) vel_k * sin(theta_k) 0 0 0 0 0]
+    println(delta_t * [vel_k * cos(theta_k) vel_k * sin(theta_k) 0 0 0 0 0])
+    println(x + delta_t * [vel_k * cos(theta_k), vel_k * sin(theta_k), 0, 0, 0, 0, 0])
+    # println(delta_t * [vel_k * cos(theta_k), vel_k * sin(theta_k), 0, 0, 0, 0, 0])
+    result = x + delta_t * [(vel_k * cos(theta_k)), (vel_k * sin(theta_k)), 0, 0, 0, 0, 0]
+    println("result for perception_f")
+    println(result)
+    return result
 end
 
 function perception_jac_fx(x, delta_t)
@@ -298,13 +304,14 @@ end
         - R = measurement noise
 """
 function perception_ekf(xego, delta_t, cam_id)
+    println("starting perception ekf now")
     # constant noise variables
     covariance_p = Diagonal([1^2, 1^2, 0.2^2, 0.4^2, 0.005^2, 0.003^2, 0.001^2])  # covariance for process model
-    covariance_z = Diagonal([1^2, 1^2, 1^2, 1^2]) # covariance for measurement model
+    covariance_z = Diagonal([0.7^2, 0.7^2, 0.7^2, 0.7^2]) # covariance for measurement model
     num_steps = 25
 
     # initial states -- *change based on your state attributes
-    x0 = [xego[1] + 2, xego[2] + 2, 0, xego[4], 8, 5, 5] # [p1 p2 theta vel l w h]
+    x0 = [xego[5] + 7, xego[6] + 7, 0, 3, 13.2, 5.7, 5.3] # [p1 p2 theta vel l w h]
     # mean value of xk state of the OTHER car
     mu = zeros(7)
     sigma = Diagonal([1^2, 1^2, 0.2^2, 0.4^2, 0.005^2, 0.003^2, 0.001^2])
@@ -316,10 +323,22 @@ function perception_ekf(xego, delta_t, cam_id)
     zs = Vector{Float64}[] # measurements of other car(s)
 
     x_prev = x0
+
+    # println("going into perception ekf for loop")
+    # println(x_prev)
+    # println()
     for k = 1:num_steps # for k = 1:something
         xk = perception_f(x_prev, delta_t)
+        # println("xk::")
+        # println(xk)
+        # println()
+
         x_prev = xk
         zk, corner_ids, corners = perception_h(xk, xego, cam_id)
+        zk = zk[1]
+        # println("zk::")
+        # println(zk[1])
+        # println()
 
         # *All of the equations below are referenced from L17 pg.3 and HW4
         # Process model: P(xk | xk-1, bbxk) = N(A*x-1, sig_carrot))
@@ -327,8 +346,13 @@ function perception_ekf(xego, delta_t, cam_id)
         # - sig_carrot = convariance_p + A * sigmas[k] * A'
         # - mu_carrot = perception_f(u[k], delta_t)
         A = perception_jac_fx(mus[k], delta_t)
-        sig_carrot = covariance_p + A * sigmas[k] * A'
+        sigma_carrot = covariance_p + A * sigmas[k] * A'
         mu_carrot = perception_f(mus[k], delta_t)
+
+        # println()
+        # println("sig_carrot and mu_carrot")
+        # println(sigma_carrot)
+        # println(mu_carrot)
 
         # Measurement model
         # In perception_h, corners are set in the following format: 
@@ -339,18 +363,30 @@ function perception_ekf(xego, delta_t, cam_id)
         C_bot = perception_jac_hx(corners[3], corner_ids[3], mu_carrot, xego, cam_id)
         C_right = perception_jac_hx(corners[4], corner_ids[4], mu_carrot, xego, cam_id)
         # for debugging
-        display("C_top, C_left, C_bot, C_right")
-        display(C_top)
-        display(C_left)
-        display(C_bot)
-        display(C_right)
+        # display("C_top, C_left, C_bot, C_right")
+        # display(C_top)
+        # display(C_left)
+        # display(C_bot)
+        # display(C_right)
 
         # now stack them up to have a 4 x 7 matrix
         # We only care about the top row for left and right
         # We only care about the bottom row for top and bottom
         C = [transpose(C_top[2, :]); transpose(C_left[1, :]); transpose(C_bot[2, :]); transpose(C_right[1, :])]
-        sigma_k = inv(inv(sig_carrot) + C' * inv(covariance_z) * C)
+        # println()
+        # println("C::")
+        # println(C)
+        # println()
+
+        # println("sigma_k:")
+        sigma_k = inv(inv(sigma_carrot) + C' * inv(covariance_z) * C)
+        # println(sigma_k)
+
+        # println("mu_k")
+        # println(sigma_k)
+        # println((inv(sigma_carrot) * mu_carrot + C' * inv(covariance_z) * zk))
         mu_k = sigma_k * (inv(sigma_carrot) * mu_carrot + C' * inv(covariance_z) * zk)
+        # println(mu_k)
 
         # update the variables
         push!(mus, mu_k)
@@ -359,4 +395,6 @@ function perception_ekf(xego, delta_t, cam_id)
         # push!(gt_states, xk)
         # push!(timesteps, delta_t)
     end
+
+    return mus, sigmas
 end
