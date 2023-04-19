@@ -65,9 +65,9 @@ function perception_h(x_other, x_ego, cam_id)
     corners_body = [perception_get_3d_bbox_corners(x_other, vehicle_size)]
     num_corners = length(corners_body)
 
-    display("corners_body")
-    display(corners_body)
-    println()
+    # display("corners_body")
+    # display(corners_body)
+    # println()
 
     # Section 1: Get transformation matrices
     T_body_cam1 = get_cam_transform(1)
@@ -89,9 +89,9 @@ function perception_h(x_other, x_ego, cam_id)
     if cam_id == 2
         transform = invert_transform(T_world_camrot2)
     end
-    display("transform:")
-    display(transform)
-    println()
+    # display("transform:")
+    # display(transform)
+    # println()
 
     # Section 2: Calculate the bounding boxes
     bbox = []
@@ -104,9 +104,9 @@ function perception_h(x_other, x_ego, cam_id)
     for j = 1:num_corners
         corners_of_other_vehicle = [transform * [pt; 1] for pt in corners_body[j]]
     end
-    display("corners_of_other_vehicle")
-    display(corners_of_other_vehicle)
-    println()
+    # display("corners_of_other_vehicle")
+    # display(corners_of_other_vehicle)
+    # println()
 
     left = image_width / 2
     right = -image_width / 2
@@ -123,22 +123,18 @@ function perception_h(x_other, x_ego, cam_id)
 
     # NOTE: DELETE THIS LATER
     # MANUALLY CHANGING THE CORNER[3] VALUES SO THAT I CAN CREATE JACOBIANS
-    for j in corners_of_other_vehicle
-        j[3] = 3.3655137916157862
-    end
+    # for j in corners_of_other_vehicle
+    #     j[3] = 3.3655137916157862
+    # end
 
     # we are basically getting through each corner values in camera frame and 
     # keep updating the left, top, bottom, right values!
     for corner in corners_of_other_vehicle
-        display("corner[3]")
-        display(corner[3])
-        println()
-
         # every point of corner in camera frame now
         if corner[3] < focal_len
             break
         end
-        display("getting px and py")
+        # display("getting px and py")
         px = focal_len * corner[1] / corner[3]
         py = focal_len * corner[2] / corner[3]
 
@@ -166,12 +162,12 @@ function perception_h(x_other, x_ego, cam_id)
         bot = max(bot, py)
 
         iter = iter + 1
-        display("moving on to next iter")
+        # display("moving on to next iter")
     end
     corners = [top_cnr, left_cnr, bot_cnr, right_cnr]
-    display("corners done")
-    display(corners)
-    println()
+    # display("corners done")
+    # display(corners)
+    # println()
 
     # println(top)
     # println(bot)
@@ -184,15 +180,16 @@ function perception_h(x_other, x_ego, cam_id)
         return bbox, corner_ids, corners
     else
         # update bbox
-        display("now converting to pixels")
+        # display("now converting to pixels")
         top = convert_to_pixel(image_height, pixel_len, top)
         bot = convert_to_pixel(image_height, pixel_len, bot)
         left = convert_to_pixel(image_width, pixel_len, left)
         right = convert_to_pixel(image_width, pixel_len, right)
         push!(bbox, SVector(top, left, bot, right))
     end
-
-    display("now returning perception_h")
+    # println()
+    # display("now returning perception_h")
+    # println()
 
     return bbox, corner_ids, corners
 end
@@ -201,6 +198,9 @@ end
 function calculate_J1_for_jac_hx(corner_id, x_other)
     # In perception_h, corners are set in the following format: 
     # corners = [top_cnr, left_cnr, bot_cnr, right_cnr]
+    display("corner id:")
+    display(corner_id)
+    println()
     l_mult = 0
     w_mult = 0
     h_mult = 0
@@ -251,7 +251,6 @@ end
 function perception_jac_hx(corner, corner_id, x_other, x_ego, cam_id)
     # Calculate J1
     J1 = calculate_J1_for_jac_hx(corner_id, x_other) # do i even need the corner values..? i can just have cornder_id to figure out l_mult and w_mult and h_mult
-
     # display("done with J1")
 
     # Calculate J2 -- confirmed it's correct
@@ -275,7 +274,6 @@ function perception_jac_hx(corner, corner_id, x_other, x_ego, cam_id)
         T_Rt = invert_transform(T_world_camrot2)
     end
     J2 = T_Rt[:, 1:3]
-
     # display("done with J2")
 
 
@@ -357,7 +355,7 @@ function perception_ekf(xego, delta_t, cam_id)
         # now stack them up to have a 4 x 7 matrix
         # We only care about the top row for left and right
         # We only care about the bottom row for top and bottom
-        C = [C_top[2, :]; C_left[1, :]; C_bot[2, :]; C_right[1, :]] # double check the order retrurned from h
+        C = [transpose(C_top[2, :]); transpose(C_left[1, :]); transpose(C_bot[2, :]); transpose(C_right[1, :])]
         sigma_k = inv(inv(sig_carrot) + C' * inv(covariance_z) * C)
         mu_k = sigma_k * (inv(sigma_carrot) * mu_carrot + C' * inv(covariance_z) * zk)
 

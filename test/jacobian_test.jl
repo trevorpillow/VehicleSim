@@ -7,32 +7,43 @@ using Test
     n = 7
     epsilon = 1e-6
 
+
+    # bbox of = [241, 321, 242, 322]
     # parameters for perception_h and perception_jac_hx
-    x_other = [5.0 7.0 0.2 2.0 13.0 6.0 5.0] # [p1 p2 theta vel l w h]
-    x_ego = [0.267 -0.534 -0.801 0.534 4.0 5.0 2.7] # [q1 q2 q3 q4 x y z] - ignored the other parts
-    cam_id = 2
+    x_other = [-91.6639496981265 -5.001254676640403 0.003 0.0001 13.2 5.7 5.3] # [p1 p2 theta vel l w h]
+    x_ego = [0.7070991651230024 0.003813789504350662 -0.0030385002054085716 0.7070975839362422 -91.6639496981265 -75.00125467663771 2.6455622444987412] # [q1 q2 q3 q4 x y z] - ignored the other parts
+    cam_id = 1
 
     # perepction_h measurement result
     zx, corner_ids, corners = VehicleSim.perception_h(x_other, x_ego, cam_id)
-    # display("zx:")
-    # display(zx)
 
     # Supposedly-correct Jacobian result
-    Jx = VehicleSim.perception_jac_hx(corners[3], corner_ids[3], x_other, x_ego, cam_id)
-    # display("Jacobian result:")
-    # display(Jx)
-    Jxn = similar(Jx)
+    C_top = VehicleSim.perception_jac_hx(corners[1], corner_ids[1], x_other, x_ego, cam_id)
+    C_left = VehicleSim.perception_jac_hx(corners[2], corner_ids[2], x_other, x_ego, cam_id)
+    C_bot = VehicleSim.perception_jac_hx(corners[3], corner_ids[3], x_other, x_ego, cam_id)
+    C_right = VehicleSim.perception_jac_hx(corners[4], corner_ids[4], x_other, x_ego, cam_id)
+
+    Jx = [transpose(C_top[2, :]); transpose(C_left[1, :]); transpose(C_bot[2, :]); transpose(C_right[1, :])] # double check the order retrurned from h
+    display("Jacobian result:")
+    display(Jx)
+    # display(Jx[:, 3])
+    println()
 
     # perception_jac_hx goes from Rn to Rm, where n = and m =
     # We want to compute Jacobian of f at some point x
-    # Let J = jac at that point
     for i = 1:n
         ei = [0.0 0.0 0.0 0.0 0.0 0.0 0.0] # same length as x_other
         ei[i] = epsilon
         zxi, corner_ids, corners = VehicleSim.perception_h(x_other + ei, x_ego, cam_id)
         df = (zxi - zx) / epsilon
-        @test isapprox(df, J[:, i])
-        # Jxn[:, i] = (zxi - zx) / epsilon
+        # display("df:")
+        # display(df[1])
+        # println()
+
+        # display("Jx[:, i]")
+        # display(Jx[:, i])
+        # println()
+        @test isapprox(df[1], Jx[:, i]) # df[1] in order to just turn it into the same type
     end
     # @test isapprox(Jx, Jxn; atol=1e-6)
     # end
