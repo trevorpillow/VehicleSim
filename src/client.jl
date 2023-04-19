@@ -47,8 +47,8 @@ function keyboard_client(host::IPAddr=IPv4(0), port=4444; v_step = 1.0, s_step =
     imu_channel = Channel{IMUMeasurement}(32)
     cam_channel = Channel{CameraMeasurement}(32)
     gt_channel = Channel{GroundTruthMeasurement}(32)
-    localization_state_channel = Channel{SVector{3, Float64}}(1)
-    put!(localization_state_channel, [0.0, 0.0, 0.0])
+    localization_state_channel = Channel{MyLocalizationType}(1)
+    put!(localization_state_channel, MyLocalizationType([0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0], 0.0)) # fills state channel with dummy value
 
     @async while isopen(socket)
         sleep(0.001)
@@ -115,21 +115,43 @@ function keyboard_client(host::IPAddr=IPv4(0), port=4444; v_step = 1.0, s_step =
         
         if isready(localization_state_channel)
             state_est = fetch(localization_state_channel)
-            # pos_est = state_est.latlong
-            # linear_est = state_est.linear_vel
-            # @info "Linear velocity estimate:"
-            # @info state_est
+            pos_est = state_est.position
+            linear_est = state_est.linear_vel
+            angular_est = state_est.angular_vel
         end
 
-        gt_pos = [0.0, 0.0, 0]
+        gps_offset = Vector([1.0, 3.0, 2.64]) # What is the offset of the GPS relative to the center of the car?
+        # offset gps forward 3, down 1, right 1
+        # PROBLEM: IMU is always moving "forward" so this calculation is useless
+        forward = Vector(linear_est/norm(linear_est))
+        # @info "forward:"
+        # @info forward
+        up = [0, 0, 1]
+        right = -cross(forward, up)
+
+        directional_offset = gps_offset[1]*forward + gps_offset[2]*right + gps_offset[3]*up
+        raw_est = pos_est + [0, 0, 2.64]
+        pos_est = pos_est + directional_offset
+
+        gt_pos = [0.0, 0.0, 0.0]
         gt_linear_vel = [0.0, 0.0, 0.0]
         while isready(gt_channel)
             gt_meas = take!(gt_channel)
             gt_pos = gt_meas.position
             gt_linear_vel = gt_meas.velocity
         end
-        # @info "Gt:"
-        # @info gt_linear_vel
+        @info "Gt:"
+        @info gt_pos
+        @info "untreated:"
+        @info raw_est
+        # @info "offset:"
+        # @info pos_est
+        @info ""
+        # @info "raw diff:"
+        # @info gt_pos - raw_est
+        # @info "offset diff:"
+        # @info gt_pos - pos_est
+        # @info ""
     end
 end
 

@@ -1,5 +1,5 @@
 struct MyLocalizationType
-    latlong::SVector{2,Float64} # Lat and Long
+    position::SVector{3,Float64} # Lat and Long
     linear_vel::SVector{3,Float64}
     angular_vel::SVector{3,Float64}
     time::Float64 #time stamp
@@ -95,6 +95,7 @@ function localize(gps_channel, imu_channel, localization_state_channel, gt_chann
 
     while true
         sleep(0.001) # Hogs all the cpu without this
+
         if isready(gps_channel)
             meas = take!(gps_channel)
             push!(lats_longs, [meas.lat, meas.long])
@@ -105,27 +106,25 @@ function localize(gps_channel, imu_channel, localization_state_channel, gt_chann
             push!(vels, [meas.linear_vel, meas.angular_vel])
         end
 
-        if length(vels) > 5 # Only average previous 5 measurements, any more reaches too far into past
-            old_meas = popfirst!(vels)
-        end
-
-        if length(lats_longs) > 5 # Only average previous 5 measurements, any more reaches too far into past
+        if length(lats_longs) > 10 # Only average previous 5 measurements, any more reaches too far into past
             old_meas = popfirst!(lats_longs)
         end
 
-        pos_estimate = mean(lats_longs)
+        if length(vels) > 10 # Only average previous 5 measurements, any more reaches too far into past
+            old_meas = popfirst!(vels)
+        end
+        
         vels_estimate = mean(vels)
-        # localization_state = MyLocalizationType(pos_estimate, vel_estimate[1], vel_estimate[2], time())
-        localization_state = vels_estimate[1]
+        pos_estimate = mean(lats_longs)
+        pos_estimate = [pos_estimate[1], pos_estimate[2], 0.0]
+        # pos_estimate = pos_estimate + vels_estimate[1]
+
+        localization_state = MyLocalizationType(pos_estimate, vels_estimate[1], vels_estimate[2], time())
         # @info localization_state
 
-        # @info "gt:"
-        # @info latlong
-        # @info "difference:"
-        # @info (estimate - latlong)
-        # Consistently off, I believe by the offset of the gps vs center of car.
-        # Impossible to test without working client, but can find orientation of car by looking at road segment direction
-        # Messy at intersections but oh well, works better than current solution
+        # gps_offset = [1.0, 3.0, 1.0] # What is the offset of the GPS relative to the center of the car?
+        # pos_estimate = pos_estimate + gps_offset * vels_estimate[1] # Offsets the gps relative to the forward vector, ie the velocity
+        # @info pos_estimate
         
         if isready(localization_state_channel)
             take!(localization_state_channel)
