@@ -285,7 +285,6 @@ function perception_jac_hx(corner, corner_id, x_other, x_ego, cam_id)
 
     # display("done with J3")
 
-
     # Calculate J4 -- confirmed it's correct
     pixel_len = 0.001
     s = 1 / pixel_len
