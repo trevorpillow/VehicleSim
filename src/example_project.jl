@@ -92,6 +92,7 @@ function localize(gps_channel, imu_channel, localization_state_channel, gt_chann
     # @info "Starting localize..."
     lats_longs = [[0.0, 0.0]]
     vels = [[[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]]]
+    direction_vectors = [[0.0, 0.0]]
 
     while true
         sleep(0.0001) # Hogs all the cpu without this
@@ -114,24 +115,32 @@ function localize(gps_channel, imu_channel, localization_state_channel, gt_chann
             old_meas = popfirst!(vels)
         end
 
-
+        pos_estimate = mean(lats_longs)
         prev_state = fetch(localization_state_channel)
+        delta_pos = [pos_estimate[1] - prev_state.position[1], pos_estimate[2] - prev_state.position[2]]
+        push!(direction_vectors, delta_pos)
+
+        if length(direction_vectors) > 10
+            old_meas = popfirst!(direction_vectors)
+        end
         
         vels_estimate = mean(vels)
-        pos_estimate = mean(lats_longs)
-        pos_estimate = [pos_estimate[1], pos_estimate[2], 0.0]
+        pos_estimate = [pos_estimate[1], pos_estimate[2], 2.64]
 
-        delta_pos = pos_estimate - prev_state.position
-        forward = Vector(delta_pos/norm(delta_pos))
+        avg_angle = mean(delta_pos)
+        # forward = [avg_angle[1]/norm(avg_angle), avg_angle[2]/norm(avg_angle), 0] # No pitch or roll
+        forward = avg_angle
         up = [0, 0, 1]
-        right = -cross(forward, up)
+        right = cross(forward, up)
 
-        gps_offset = Vector([1.0, 3.0, 2.64])
+        gps_offset = Vector([1.0, 3.0, 2.64]) # Need orientation: Rolling average, old angle is .9 of calculation, new angle is .1. Will approach correct answer
         directional_offset = gps_offset[1]*forward + gps_offset[2]*right + gps_offset[3]*up
-        # raw_est = pos_est + [0, 0, 2.64]
         if !isnan(directional_offset[1])
             pos_estimate = pos_estimate + directional_offset
         end
+
+        vels_estimate[1] = forward
+        # @info delta_pos
     
 
         localization_state = MyLocalizationType(pos_estimate, vels_estimate[1], vels_estimate[2], time())

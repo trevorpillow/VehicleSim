@@ -128,12 +128,12 @@ function keyboard_client(host::IPAddr=IPv4(0), port=4444; v_step = 1.0, s_step =
         # @info linear_est
         # @info "forward:"
         # @info forward
-        up = [0, 0, 1]
-        right = -cross(forward, up)
+        # up = [0, 0, 1]
+        # right = -cross(forward, up)
 
-        directional_offset = gps_offset[1]*forward + gps_offset[2]*right + gps_offset[3]*up
-        raw_est = pos_est + [0, 0, 2.64]
-        pos_est = pos_est + directional_offset
+        # directional_offset = gps_offset[1]*forward + gps_offset[2]*right + gps_offset[3]*up
+        # raw_est = pos_est + [0, 0, 2.64]
+        # pos_est = pos_est + directional_offset
 
         gt_pos = [0.0, 0.0, 0.0]
         gt_linear_vel = [0.0, 0.0, 0.0]
@@ -143,9 +143,9 @@ function keyboard_client(host::IPAddr=IPv4(0), port=4444; v_step = 1.0, s_step =
             gt_linear_vel = gt_meas.velocity
         end
         @info "Gt:"
-        @info gt_pos
+        @info gt_linear_vel
         @info "untreated:"
-        @info raw_est
+        @info linear_est
         # @info "offset:"
         # @info pos_est
         @info ""
