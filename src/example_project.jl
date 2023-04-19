@@ -94,7 +94,7 @@ function localize(gps_channel, imu_channel, localization_state_channel, gt_chann
     vels = [[[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]]]
 
     while true
-        sleep(0.001) # Hogs all the cpu without this
+        sleep(0.0001) # Hogs all the cpu without this
 
         if isready(gps_channel)
             meas = take!(gps_channel)
@@ -106,25 +106,35 @@ function localize(gps_channel, imu_channel, localization_state_channel, gt_chann
             push!(vels, [meas.linear_vel, meas.angular_vel])
         end
 
-        if length(lats_longs) > 10 # Only average previous 5 measurements, any more reaches too far into past
+        if length(lats_longs) > 1 # Only average previous 5 measurements, any more reaches too far into past
             old_meas = popfirst!(lats_longs)
         end
 
-        if length(vels) > 10 # Only average previous 5 measurements, any more reaches too far into past
+        if length(vels) > 1 # Only average previous 5 measurements, any more reaches too far into past
             old_meas = popfirst!(vels)
         end
+
+
+        prev_state = fetch(localization_state_channel)
         
         vels_estimate = mean(vels)
         pos_estimate = mean(lats_longs)
         pos_estimate = [pos_estimate[1], pos_estimate[2], 0.0]
-        # pos_estimate = pos_estimate + vels_estimate[1]
+
+        delta_pos = pos_estimate - prev_state.position
+        forward = Vector(delta_pos/norm(delta_pos))
+        up = [0, 0, 1]
+        right = -cross(forward, up)
+
+        gps_offset = Vector([1.0, 3.0, 2.64])
+        directional_offset = gps_offset[1]*forward + gps_offset[2]*right + gps_offset[3]*up
+        # raw_est = pos_est + [0, 0, 2.64]
+        if !isnan(directional_offset[1])
+            pos_estimate = pos_estimate + directional_offset
+        end
+    
 
         localization_state = MyLocalizationType(pos_estimate, vels_estimate[1], vels_estimate[2], time())
-        # @info localization_state
-
-        # gps_offset = [1.0, 3.0, 1.0] # What is the offset of the GPS relative to the center of the car?
-        # pos_estimate = pos_estimate + gps_offset * vels_estimate[1] # Offsets the gps relative to the forward vector, ie the velocity
-        # @info pos_estimate
         
         if isready(localization_state_channel)
             take!(localization_state_channel)

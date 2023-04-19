@@ -124,6 +124,8 @@ function keyboard_client(host::IPAddr=IPv4(0), port=4444; v_step = 1.0, s_step =
         # offset gps forward 3, down 1, right 1
         # PROBLEM: IMU is always moving "forward" so this calculation is useless
         forward = Vector(linear_est/norm(linear_est))
+        # @info "vel"
+        # @info linear_est
         # @info "forward:"
         # @info forward
         up = [0, 0, 1]
