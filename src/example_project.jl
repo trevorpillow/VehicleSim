@@ -174,15 +174,15 @@ function decision_making(localization_state_channel,
 
     # 1. Find current map segment
     gt_meas = take!(gt_channel)
-    start_id = find_segment(gt_meas.position[1:2], map_segments)
+    start_id = find_segment(gt_meas.position[1:2], map_segments)    
 
     # 2. Find shortest path to target segment
+    path = a_star(map_segments, start_id, target_id)
 
     # 3. 
 
-    t = gt_meas.time
+
     for n in 1:15
-        sleep(1)
         while isready(gt_channel)
             meas = take!(gt_channel)
             if meas.time > gt_meas.time
@@ -197,7 +197,7 @@ function decision_making(localization_state_channel,
         #gt_meas = take!(gt_channel)
         #print(gt_meas.time)
         #print("   ")
-        println(gt_meas.position[1:2])
+        #println(gt_meas.position[1:2])
 
 
 
@@ -270,6 +270,7 @@ function my_client(host::IPAddr=IPv4(0), port=4444)
         end
     end)
 
+    sleep(1)
     # @async 
     #@async localize(gps_channel, imu_channel, localization_state_channel, gt_channel) #FIXME: Remove gt channel once ready
     # @async perception(cam_channel, localization_state_channel, perception_state_channel)

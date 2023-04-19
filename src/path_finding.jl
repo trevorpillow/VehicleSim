@@ -17,10 +17,19 @@ function inside_segment(position, segment)
     else
         center = center_of_curve(segment)
         inner_radius, outer_radius = radii(segment)
-        start_angle = angle_(segment.lane_boundaries[1].pt_a, center)
-        end_angle = angle_(segment.lane_boundaries[1].pt_b, center)
-        curve = sign(segment.lane_boundaries[1].curvature)
-        return inner_radius < norm(position - center) < outer_radius && curve * start_angle < curve * angle_(position, center) < curve * end_angle
+        between_radii = inner_radius < norm(position - center) < outer_radius
+
+        turn_direction = sign(segment.lane_boundaries[1].curvature)
+        current_angle = angle_(position, center) * turn_direction
+        start_angle = angle_(segment.lane_boundaries[1].pt_a, center) * turn_direction
+        end_angle = angle_(segment.lane_boundaries[1].pt_b, center) * turn_direction
+        if start_angle > end_angle
+            between_angles = start_angle < current_angle < 2 * π || 0 < current_angle < end_angle
+        else
+            between_angles = start_angle < current_angle < end_angle
+        end
+
+        return between_radii && between_angles
     end
 end
 
@@ -43,12 +52,12 @@ end
 function center_of_curve(segment)
     pt_a = segment.lane_boundaries[1].pt_a
     pt_b = segment.lane_boundaries[1].pt_b
-    r = 1 / segment.lane_boundaries[1].curvature
-    midpoint = pt_a + (pt_b - pt_a) / 2
-    diag1 = norm(midpoint - pt_a)
-    diag2 = sqrt(r^2 - diag1^2)
-    s = SVector(1.0, -1.0) * sign(r)
-    midpoint + s .* (diag1 * (midpoint - pt_a) / diag2)
+    radius = 1 / segment.lane_boundaries[1].curvature
+    mid_chord = midpoint(pt_a, pt_b)
+    diag1 = norm(mid_chord - pt_a)
+    diag2 = sqrt(radius^2 - diag1^2)
+    s = SVector(-1.0, 1.0) * sign(radius) * sign(mid_chord[1] - pt_a[1]) * sign(mid_chord[2] - pt_a[2])
+    mid_chord + s .* (diag1 * (mid_chord - pt_a) / diag2)
 end
 
 function radii(segment)
@@ -61,7 +70,7 @@ end
 function angle_(p, c)
     p̂ = (p - c) / norm(p - c)
     θ = atan(p̂[2], p̂[1])
-    θ = θ > 0 - 0.00001 ? θ : θ + 2 * π
+    θ = θ > 0 ? θ : θ + 2 * π
 end
 
 function segment_length(segment)
@@ -70,8 +79,14 @@ function segment_length(segment)
     else
         center = center_of_curve(segment)
         inner_radius, outer_radius = radii(segment)
-        start_angle = angle_(segment.lane_boundaries[1].pt_a, center)
-        end_angle = angle_(segment.lane_boundaries[1].pt_b, center)
+
+        turn_direction = sign(segment.lane_boundaries[1].curvature)
+        start_angle = angle_(segment.lane_boundaries[1].pt_a, center) * turn_direction
+        end_angle = angle_(segment.lane_boundaries[1].pt_b, center) * turn_direction
+        if end_angle < start_angle
+            end_angle += 2 * π
+        end
+
         return (end_angle - start_angle) * (outer_radius + inner_radius) / 2
     end
 end
@@ -145,11 +160,15 @@ function a_star(map_segments, start_id, target_id)
 end
 
 function construct_path(ancestors, start_id, target_id)
-    path = [target_id]
+    path = Dict{Int, Int}()
+    path[target_id] = 0
+
     current_id = target_id
     while current_id != start_id
-        current_id = ancestors[current_id]
-        push!(path, current_id)
+        child_id = current_id
+        current_id = ancestors[child_id]
+        path[current_id] = child_id
     end
+
     path
 end
