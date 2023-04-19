@@ -8,7 +8,9 @@ function perception_f(x, delta_t)
     # - updated-p2 = p2 + delta_time*sin(theta)*v
     theta_k = x[3]
     vel_k = x[4]
-    x + delta_t * [vel_k * cos(theta_k), vel_k * sin(theta_k), 0, 0, 0, 0, 0]
+    println(x)
+    println(delta_t * [vel_k * cos(theta_k), vel_k * sin(theta_k), 0, 0, 0, 0, 0])
+    x + delta_t * [vel_k * cos(theta_k) vel_k * sin(theta_k) 0 0 0 0 0]
 end
 
 function perception_jac_fx(x, delta_t)
