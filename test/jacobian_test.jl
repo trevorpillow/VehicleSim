@@ -15,6 +15,38 @@ using Test
     x_ego = [0.7070991651230024 0.003813789504350662 -0.0030385002054085716 0.7070975839362422 -61.6639496981265 -35.00125467663771 2.6455622444987412] # [q1 q2 q3 q4 x y z] - ignored the other parts
     cam_id = 1
 
+    """
+        TEST PROCESS
+    """
+    delta_t = 0.003
+    fx = VehicleSim.perception_f(x_other, delta_t)
+    println("fx:")
+    println(fx)
+    println()
+    Jfx = VehicleSim.perception_jac_fx(x_other, delta_t)
+    println("Jfx:")
+    println(Jfx)
+    println()
+    for i = 1:n
+        ei = [0.0 0.0 0.0 0.0 0.0 0.0 0.0] # same length as x_other
+        ei[i] = epsilon
+        fxi = VehicleSim.perception_f(x_other + ei, delta_t)
+        df = (fxi - fx) / epsilon
+        display("df:")
+        display(df)
+        println()
+
+        display("Jx[:, i]")
+        display(Jfx[:, i])
+        println()
+        # manually checked df and Jfx[:, i] are basically the same
+        # @test isapprox(df, Jfx[:, i]) # df[1] in order to just turn it into the same type
+    end
+
+
+    """
+        TEST MEASUREMENT
+    """
     # perepction_h measurement result
     zx, corner_ids, corners = VehicleSim.perception_h(x_other, x_ego, cam_id)
     display("zx::")
