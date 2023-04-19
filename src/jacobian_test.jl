@@ -31,3 +31,30 @@ function test_perception_h_jac()
 
     end
 end
+
+function test_localization_h_jac_imu()
+
+    # variable set up for test
+    n = 7
+    epsilon = 1e-6
+
+    # parameters for jac_h_imu
+    x = []
+
+    J = jac_h_imu(x)
+
+    # perception_jac_hx goes from Rn to Rm, where n = and m =
+    # We want to compute Jacobian of f at some point x
+    # Let J = jac at that point
+    for i = 1:n
+        ei = zeros(n)
+        ei[i] = epsilon
+        df = (jac_h_imu(x)
+              -
+              jac_h_imu(x)) / epsilon
+
+        # df should equal approximately J[:, i]
+        @test isapprox(df, J[:, i]; atol=1e-6)
+
+    end
+end
