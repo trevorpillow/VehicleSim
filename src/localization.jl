@@ -1,5 +1,6 @@
 function localize(gps_channel, imu_channel, localization_state_channel)
     # Set up algorithm / initialize variables
+    @info "Wrong localize!"
     gps_estimates = []
     imu_estimates = []
     sqrt_meas_cov = Diagonal([1.0, 1.0])

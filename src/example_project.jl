@@ -1,7 +1,7 @@
 struct MyLocalizationType
     latlong::SVector{2,Float64} # Lat and Long
-    linear_velocity::SVector{3,Float64}
-    angular_velocity::SVector{3,Float64}
+    linear_vel::SVector{3,Float64}
+    angular_vel::SVector{3,Float64}
     time::Float64 #time stamp
 end
 
@@ -15,13 +15,12 @@ struct MyPerceptionType
     size::SVector{3,Float64} # length, width, height of 3d bounding box centered at (position/orientation)
 end
 
-
 function test_algorithms(gt_channel,
     localization_state_channel,
     perception_state_channel,
     ego_vehicle_id)
     estimated_vehicle_states = Dict{Int,Tuple{Float64,Union{SimpleVehicleState,FullVehicleState}}}
-    gt_vehicle_states = Dict{Int,GroundTruthMeasuremen}
+    gt_vehicle_states = Dict{Int,GroundTruthMeasurement}
 
     t = time()
     while true
@@ -89,42 +88,49 @@ end
 
 
 function localize(gps_channel, imu_channel, localization_state_channel, gt_channel)
-    # Set up algorithm / initialize variables
-    gps_measurements = []
-    fresh_imu_meas = []
-    lats_longs = []
+
+    # @info "Starting localize..."
+    lats_longs = [[0.0, 0.0]]
+    vels = [[[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]]]
+
     while true
+        sleep(0.001) # Hogs all the cpu without this
+        if isready(gps_channel)
+            meas = take!(gps_channel)
+            push!(lats_longs, [meas.lat, meas.long])
+        end
 
-        meas = take!(gps_channel)
-        push!(lats_longs, [meas.lat, meas.long])
-        push!(gps_measurements, meas)
-        meas = take!(imu_channel)
-        push!(fresh_imu_meas, meas)
+        if isready(imu_channel)
+            meas = take!(imu_channel)
+            push!(vels, [meas.linear_vel, meas.angular_vel])
+        end
 
-        estimate = mean(lats_longs)
-        
+        if length(vels) > 5 # Only average previous 5 measurements, any more reaches too far into past
+            old_meas = popfirst!(vels)
+        end
 
-        # Using GT until we get a real algorithm
-        gt = fetch(gt_channel)
-        latlong = gt.position[1:2]
-        @info "gt:"
-        @info latlong
-        @info "difference:"
-        @info (estimate - latlong)
+        if length(lats_longs) > 5 # Only average previous 5 measurements, any more reaches too far into past
+            old_meas = popfirst!(lats_longs)
+        end
+
+        pos_estimate = mean(lats_longs)
+        vels_estimate = mean(vels)
+        # localization_state = MyLocalizationType(pos_estimate, vel_estimate[1], vel_estimate[2], time())
+        localization_state = vels_estimate[1]
+        # @info localization_state
+
+        # @info "gt:"
+        # @info latlong
+        # @info "difference:"
+        # @info (estimate - latlong)
         # Consistently off, I believe by the offset of the gps vs center of car.
         # Impossible to test without working client, but can find orientation of car by looking at road segment direction
         # Messy at intersections but oh well, works better than current solution
-
-
-        # process measurements
-        # jacf(gt.orientation, gt.orientation, gt.velocity, gt.angular_velocity, 5)
-
-        localization_state = MyLocalizationType(latlong, gt.velocity, gt.angular_velocity, gt.time)
         
-        # if isready(localization_state_channel)
-        #     take!(localization_state_channel)
-        # end
-        # put!(localization_state_channel, localization_state)
+        if isready(localization_state_channel)
+            take!(localization_state_channel)
+        end
+        put!(localization_state_channel, localization_state)
     end
 end
 

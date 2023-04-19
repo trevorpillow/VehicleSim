@@ -307,6 +307,7 @@ function cameras(vehicles, state_channels, cam_channels; max_rate=10.0, focal_le
 end
 
 function ground_truth(vehicles, state_channels, gt_channels; max_rate=10.0) 
+    n = 0
     min_Δ = 1.0/max_rate
     t = time()
     num_vehicles = length(vehicles)
@@ -317,8 +318,11 @@ function ground_truth(vehicles, state_channels, gt_channels; max_rate=10.0)
         tnow = time()
         if tnow - t > min_Δ
             t = tnow
+            # if n > 1000 && n < 1010
+            #     @info states[1].q[5:7] # No idea but GT is fixed now
+            # end
             measurements = [GroundTruthMeasurement(t, i, 
-                                                   states[i].q[5:7], 
+                                                   states[i].q[5:7], # position
                                                    states[i].q[1:4], 
                                                    states[i].v[4:6], 
                                                    states[i].v[1:3],
@@ -327,6 +331,8 @@ function ground_truth(vehicles, state_channels, gt_channels; max_rate=10.0)
                 foreach(m->put!(gt_channels[i], m), measurements)
             end
         end
+
+        n = n + 1
     end
 end
 
