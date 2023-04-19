@@ -6,16 +6,9 @@ function perception_f(x, delta_t)
     # update xk = [p1 p2 theta vel l w h]
     # - updated-p1 = p1 + delta_time *cos(theta)*v
     # - updated-p2 = p2 + delta_time*sin(theta)*v
-    println("in perception_f")
     theta_k = x[3]
     vel_k = x[4]
-    println(x)
-    println(delta_t * [vel_k * cos(theta_k) vel_k * sin(theta_k) 0 0 0 0 0])
-    println(x + delta_t * [vel_k * cos(theta_k), vel_k * sin(theta_k), 0, 0, 0, 0, 0])
-    # println(delta_t * [vel_k * cos(theta_k), vel_k * sin(theta_k), 0, 0, 0, 0, 0])
     result = x + delta_t * [(vel_k * cos(theta_k)), (vel_k * sin(theta_k)), 0, 0, 0, 0, 0]
-    println("result for perception_f")
-    println(result)
     return result
 end
 
@@ -72,10 +65,6 @@ function perception_h(x_other, x_ego, cam_id)
     corners_body = [perception_get_3d_bbox_corners(x_other, vehicle_size)]
     num_corners = length(corners_body)
 
-    # display("corners_body")
-    # display(corners_body)
-    # println()
-
     # Section 1: Get transformation matrices
     T_body_cam1 = get_cam_transform(1)
     T_body_cam2 = get_cam_transform(2)
@@ -96,9 +85,6 @@ function perception_h(x_other, x_ego, cam_id)
     if cam_id == 2
         transform = invert_transform(T_world_camrot2)
     end
-    # display("transform:")
-    # display(transform)
-    # println()
 
     # Section 2: Calculate the bounding boxes
     bbox = []
@@ -177,12 +163,11 @@ function perception_h(x_other, x_ego, cam_id)
         return bbox, corner_ids, corners
     else
         # update bbox
-        # display("now converting to pixels")
-        top = convert_to_pixel(image_height, pixel_len, top)
-        bot = convert_to_pixel(image_height, pixel_len, bot)
-        left = convert_to_pixel(image_width, pixel_len, left)
-        right = convert_to_pixel(image_width, pixel_len, right)
-        push!(bbox, SVector(top, left, bot, right))
+        top_u = unrounded_convert_to_pixel(image_height, pixel_len, top)
+        bot_u = unrounded_convert_to_pixel(image_height, pixel_len, bot)
+        left_u = unrounded_convert_to_pixel(image_width, pixel_len, left)
+        right_u = unrounded_convert_to_pixel(image_width, pixel_len, right)
+        push!(bbox, SVector(top_u, left_u, bot_u, right_u))
     end
     # println()
     # display("now returning perception_h")
@@ -199,35 +184,35 @@ function calculate_J1_for_jac_hx(corner_id, x_other)
     w_mult = 0
     h_mult = 0
     if corner_id == 1
-        l_mult = 1
+        l_mult = -1
         w_mult = -1
         h_mult = -1
     elseif corner_id == 2
         l_mult = -1
         w_mult = -1
-        h_mult = -1
+        h_mult = 1
     elseif corner_id == 3
-        l_mult = 1
+        l_mult = -1
         w_mult = 1
         h_mult = -1
     elseif corner_id == 4
         l_mult = -1
         w_mult = 1
-        h_mult = -1
+        h_mult = 1
     elseif corner_id == 5
         l_mult = 1
         w_mult = -1
-        h_mult = 1
+        h_mult = -1
     elseif corner_id == 6
-        l_mult = -1
+        l_mult = 1
         w_mult = -1
         h_mult = 1
     elseif corner_id == 7
         l_mult = 1
         w_mult = 1
-        h_mult = 1
+        h_mult = -1
     else
-        l_mult = -1
+        l_mult = 1
         w_mult = 1
         h_mult = 1
     end
@@ -241,12 +226,28 @@ function calculate_J1_for_jac_hx(corner_id, x_other)
     #     0 1 0 0 0 0.5*w_mult 0
     #     0 0 0 0 0 0 (0.5+0.5*h_mult)]
 
-    [(-0.5*l*sin(theta)*l_mult) (0.5*l*cos(theta)*l_mult) 0 0 0 0 0
-        0 0 (-0.5*w*sin(theta)*w_mult) (0.5*w*cos(theta)*w_mult) 0 0 0
-        0 0 0 0 (-0.5*h*sin(theta)*h_mult) (0.5*h*cos(theta)*h_mult) 0]
-    # [1 0 (0.5*(-sin(theta)*l_mult*l-cos(theta)*w_mult*w)) 0 (0.5*(cos(theta)*l_mult)) (0.5*(-sin(theta)*w_mult)) 0
+    # x = [p1 p2 theta v l w h]
+    # [(-0.5*l*sin(theta)*l_mult) (0.5*l*cos(theta)*l_mult) 0 0 0 0 0
+    #     0 0 (-0.5*w*sin(theta)*w_mult) (0.5*w*cos(theta)*w_mult) 0 0 0
+    #     0 0 0 0 (-0.5*h*sin(theta)*h_mult) (0.5*h*cos(theta)*h_mult) 0]
+
+    # original
+    # J1 = [1 0 (0.5*(-sin(theta)*l_mult*l-cos(theta)*w_mult*w)) 0 (0.5*(cos(theta)*l_mult)) (0.5*(-sin(theta)*w_mult)) 0
     #     0 1 (0.5*(cos(theta)*l_mult*l-sin(theta)*w_mult*w)) 0 (0.5*sin(theta)*l_mult) (0.5*(cos(theta)*w_mult)) 0
     #     0 0 0 0 0 0 (0.5+h_mult*0.5)]
+
+    # with 1/4
+    # J1 = [1 0 (1/4*(-sin(theta)*l_mult*l-cos(theta)*w_mult*w)) 0 (1/4*(cos(theta)*l_mult)) (1/4*(-sin(theta)*w_mult)) 0
+    #     0 1 (1/4*(cos(theta)*l_mult*l-sin(theta)*w_mult*w)) 0 (1/4*sin(theta)*l_mult) (1/4*(cos(theta)*w_mult)) 0
+    #     0 0 0 0 0 0 (h_mult*3/4)]
+
+    # with l, w, h set to 0
+    J1 = [1 0 (1/4*(-sin(theta)*l_mult*l-cos(theta)*w_mult*w)) 0 0 0 0
+        0 1 (1/4*(cos(theta)*l_mult*l-sin(theta)*w_mult*w)) 0 0 0 0
+        0 0 0 0 0 0 0]
+    # println("J1 from mine")
+    # println(J1)
+    return J1
 end
 
 function perception_jac_hx(corner, corner_id, x_other, x_ego, cam_id)
@@ -303,98 +304,51 @@ end
         - Q = process noise
         - R = measurement noise
 """
-function perception_ekf(xego, delta_t, cam_id)
+function perception_ekf(x0, bbox, xego, delta_t, cam_id)
     println("starting perception ekf now")
     # constant noise variables
-    covariance_p = Diagonal([1^2, 1^2, 0.2^2, 0.4^2, 0.005^2, 0.003^2, 0.001^2])  # covariance for process model
-    covariance_z = Diagonal([0.7^2, 0.7^2, 0.7^2, 0.7^2]) # covariance for measurement model
-    num_steps = 25
+    covariance_p = Diagonal([1^2, 1^2, 0.2^2, 0.4^2, 0.0003^2, 0.0002^2, 0.0001^2])  # covariance for process model
+    # covariance_z = Diagonal([0.7^2, 0.7^2, 0.7^2, 0.7^2]) # covariance for measurement model
+    println(bbox)
 
-    # initial states -- *change based on your state attributes
-    x0 = [xego[5] + 7, xego[6] + 7, 0, 3, 13.2, 5.7, 5.3] # [p1 p2 theta vel l w h]
+    covariance_z = Diagonal([bbox[1], bbox[2], bbox[3], bbox[4]]) + Diagonal([0.7^2, 0.7^2, 0.7^2, 0.7^2]) # covariance for measurement model
+
     # mean value of xk state of the OTHER car
-    mu = zeros(7)
+    mu = x0
     sigma = Diagonal([1^2, 1^2, 0.2^2, 0.4^2, 0.005^2, 0.003^2, 0.001^2])
 
-    # variables to keep updating
-    # timesteps = []
-    mus = [mu,] # the means
-    sigmas = Matrix{Float64}[sigma,] # list of sigma_k's
-    zs = Vector{Float64}[] # measurements of other car(s)
+    xk = perception_f(mu, delta_t)
+    zk, corner_ids, corners = perception_h(xk, xego, cam_id)
+    zk = zk[1] # just re-formatting in order to have the right data structure
 
-    x_prev = x0
+    println("debug1")
+    # *All of the equations below are referenced from L17 pg.3 and HW4
+    # Process model: P(xk | xk-1, bbxk) = N(A*x-1, sig_carrot))
+    # A = perception_jac_fx(mus[k], delta_t)
+    # sigma_carrot = covariance_p + A * sigmas[k] * A'
+    # mu_carrot = perception_f(mus[k], delta_t)
 
-    # println("going into perception ekf for loop")
-    # println(x_prev)
-    # println()
-    for k = 1:num_steps # for k = 1:something
-        xk = perception_f(x_prev, delta_t)
-        # println("xk::")
-        # println(xk)
-        # println()
+    A = perception_jac_fx(mu, delta_t)
+    sigma_carrot = covariance_p + A * sigma * A'
+    mu_carrot = perception_f(mu, delta_t)
 
-        x_prev = xk
-        zk, corner_ids, corners = perception_h(xk, xego, cam_id)
-        zk = zk[1]
-        # println("zk::")
-        # println(zk[1])
-        # println()
+    # println("debug2")
 
-        # *All of the equations below are referenced from L17 pg.3 and HW4
-        # Process model: P(xk | xk-1, bbxk) = N(A*x-1, sig_carrot))
-        # - A = perception_jac_fx(x_prev, delta_t)
-        # - sig_carrot = convariance_p + A * sigmas[k] * A'
-        # - mu_carrot = perception_f(u[k], delta_t)
-        A = perception_jac_fx(mus[k], delta_t)
-        sigma_carrot = covariance_p + A * sigmas[k] * A'
-        mu_carrot = perception_f(mus[k], delta_t)
+    # Measurement model
+    # In perception_h, corners are set in the following format: 
+    # corners = [top_cnr, left_cnr, bot_cnr, right_cnr]
+    C_top = perception_jac_hx(corners[1], corner_ids[1], mu_carrot, xego, cam_id)
+    C_left = perception_jac_hx(corners[2], corner_ids[2], mu_carrot, xego, cam_id)
+    C_bot = perception_jac_hx(corners[3], corner_ids[3], mu_carrot, xego, cam_id)
+    C_right = perception_jac_hx(corners[4], corner_ids[4], mu_carrot, xego, cam_id)
 
-        # println()
-        # println("sig_carrot and mu_carrot")
-        # println(sigma_carrot)
-        # println(mu_carrot)
+    # now stack them up to have a 4 x 7 matrix
+    # We only care about the top row for left and right
+    # We only care about the bottom row for top and bottom
+    C = [transpose(C_top[2, :]); transpose(C_left[1, :]); transpose(C_bot[2, :]); transpose(C_right[1, :])]
+    sigma_k = inv(inv(sigma_carrot) + C' * inv(covariance_z) * C)
+    mu_k = sigma_k * (inv(sigma_carrot) * mu_carrot + C' * inv(covariance_z) * zk)
+    # println(mu_k)
 
-        # Measurement model
-        # In perception_h, corners are set in the following format: 
-        # corners = [top_cnr, left_cnr, bot_cnr, right_cnr]
-        # *NOTE: might have to take only the top or bottom row depending the corner
-        C_top = perception_jac_hx(corners[1], corner_ids[1], mu_carrot, xego, cam_id)
-        C_left = perception_jac_hx(corners[2], corner_ids[2], mu_carrot, xego, cam_id)
-        C_bot = perception_jac_hx(corners[3], corner_ids[3], mu_carrot, xego, cam_id)
-        C_right = perception_jac_hx(corners[4], corner_ids[4], mu_carrot, xego, cam_id)
-        # for debugging
-        # display("C_top, C_left, C_bot, C_right")
-        # display(C_top)
-        # display(C_left)
-        # display(C_bot)
-        # display(C_right)
-
-        # now stack them up to have a 4 x 7 matrix
-        # We only care about the top row for left and right
-        # We only care about the bottom row for top and bottom
-        C = [transpose(C_top[2, :]); transpose(C_left[1, :]); transpose(C_bot[2, :]); transpose(C_right[1, :])]
-        # println()
-        # println("C::")
-        # println(C)
-        # println()
-
-        # println("sigma_k:")
-        sigma_k = inv(inv(sigma_carrot) + C' * inv(covariance_z) * C)
-        # println(sigma_k)
-
-        # println("mu_k")
-        # println(sigma_k)
-        # println((inv(sigma_carrot) * mu_carrot + C' * inv(covariance_z) * zk))
-        mu_k = sigma_k * (inv(sigma_carrot) * mu_carrot + C' * inv(covariance_z) * zk)
-        # println(mu_k)
-
-        # update the variables
-        push!(mus, mu_k)
-        push!(sigmas, sigma_k)
-        push!(zs, zk)
-        # push!(gt_states, xk)
-        # push!(timesteps, delta_t)
-    end
-
-    return mus, sigmas
+    return mu_k, sigma_k
 end
