@@ -130,6 +130,7 @@ function server(max_vehicles=1,
                                 close(sock)
                            end
                         end
+                        close(sock)
                     end)
                     errormonitor(@async begin
                         while isopen(sock)
@@ -139,6 +140,7 @@ function server(max_vehicles=1,
                                 serialize(sock, msg)
                             end
                         end
+                        close(sock)
                     end)
                 end
             catch e

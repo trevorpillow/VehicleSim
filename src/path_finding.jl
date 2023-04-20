@@ -3,9 +3,9 @@ struct HalfSpace
     b::Float64
 end
 
-function find_segment(position, map_segments)
-    for (id, segment) in map_segments
-        if inside_segment(position, segment)
+function find_segment(position, map_segments, sub_map=keys(map_segments))
+    for id in sub_map
+        if inside_segment(position, map_segments[id])
             return id
         end
     end
@@ -61,8 +61,12 @@ function center_of_curve(segment)
 end
 
 function radii(segment)
+    curve = segment.lane_boundaries[1].curvature
+    if curve == 0
+        return 0.0, 0.0
+    end
     num_lane_boundaries = length(segment.lane_boundaries)
-    r1 = 1 / abs(segment.lane_boundaries[1].curvature)
+    r1 = 1 / abs(curve)
     r2 = 1 / abs(segment.lane_boundaries[num_lane_boundaries].curvature)
     min(r1,r2), max(r1,r2)
 end
