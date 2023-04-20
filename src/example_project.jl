@@ -118,8 +118,19 @@ function localize(gps_channel, imu_channel, localization_state_channel, gt_chann
     end
 end
 
+function undo_convert_to_pixel(num_pixels, pixel_len, y)
+    min_val = -pixel_len * num_pixels / 2
+    undo_pix = y * pixel_len + min_val
+    return undo_pix
+end
+
 function perception(cam_meas_channel, gt_channel, localization_state_channel, perception_state_channel)
     # set up stuff
+    pixel_len = 0.001
+    focal_len = 0.01
+    image_height = 480
+    image_width = 640
+
     x0 = [-88, 0, 0.01, 0.01, 13.2, 5.7, 5.3] # EKF depends too heavily on x0
     # image_ratio_width = 640 / 50 # change '40' to something like bbox width or shutdown
     # image_ratio_height = 480 / (2 * bbox[]) # same as above
@@ -144,7 +155,7 @@ function perception(cam_meas_channel, gt_channel, localization_state_channel, pe
     x_ego = [x_ego_o[1] x_ego_o[2] x_ego_o[3] x_ego_o[4] x_ego_p[1] x_ego_p[2] x_ego_p[3]]
     println(x_ego)
 
-    x0 = [x_ego_p[1] + 10, x_ego_p[2] + 10, 0.01, 0.01, 13.2, 5.7, 5.3]
+    # x0 = [x_ego_p[1] + 10, x_ego_p[2] + 10, 0.01, 0.01, 13.2, 5.7, 5.3]
     delta_t = 0.004
     current_cam_id = 1
 
@@ -176,14 +187,14 @@ function perception(cam_meas_channel, gt_channel, localization_state_channel, pe
         frame_size = 0
         # ny[[-91.02649421767202, -5.005907915629363, 0.04381970433404755, 0.010203947603373214, 13.199999999999998, 5.7, 5.300000000000001], [-91.02649421767202, -5.005907915629363, 0.04381970433404755, 0.010203947603373214, 13.199999999999998, 5.7, 5.300000000000001], [-91.02649421767202, -5.005907915629363, 0.04381970433404755, 0.010203947603373214, 13.199999999999998, 5.7, 5.300000000000001], [-91.02649421767202, -5.005907915629363, 0.04381970433404755, 0.010203947603373214, 13.199999999999998, 5.7, 5.300000000000001], [-91.02649421767202, -5.005907915629363, 0.04381970433404755, 0.010203947603373214, 13.199999999999998, 5.7, 5.300000000000001]]
         if length(fresh_cam_meas) > 5
-            println("fresh_cam_meas length greater than 5")
+            # println("fresh_cam_meas length greater than 5")
             # deal with the first five camera measurements
             for i = 1:5
                 current_cam_id = fresh_cam_meas[i].camera_id
                 current_bboxes = fresh_cam_meas[i].bounding_boxes
-                println("cam id and bbox")
-                println(current_cam_id)
-                println(current_bboxes)
+                # println("cam id and bbox")
+                # println(current_cam_id)
+                # println(current_bboxes)
                 # exmaple of current_bboxes: StaticArraysCore.SVector{4, Int64}[[241, 321, 242, 322], [241, 319, 242, 320], [241, 339, 242, 342]]
 
                 for j = 1:length(current_bboxes)
@@ -196,6 +207,51 @@ function perception(cam_meas_channel, gt_channel, localization_state_channel, pe
                     if width * height > frame_size
                         frame_size = width * height
                         closest_bbox = current_bboxes[j]
+                        # update the value of x0
+                        d = 9 / (width * pixel_len) * focal_len # d (X3) is the ray from camera to the closest car
+                        println("value of X3 for the closest bbox")
+                        println(d)
+                        println()
+
+                        # now calculate X1 and X2
+                        y1 = 1 / 2 * (height)
+                        y2 = 1 / 2 * (width)
+
+                        y1_undo = undo_convert_to_pixel(image_height, pixel_len, y1)
+                        y2_undo = undo_convert_to_pixel(image_width, pixel_len, y2)
+
+                        println("y1 and y2 undo's")
+                        println(y1_undo)
+                        println(y2_undo)
+
+                        # now undo-pixel of y1 and y2
+                        X1 = y1_undo / focal_len * d
+                        X2 = y2_undo / focal_len * d
+                        println("value of X1::")
+                        println(X1)
+
+                        # now convert X1 and X2 into 
+                        T_body_cam = get_cam_transform(current_cam_id)
+                        T_cam_camrot = get_rotated_camera_transform()
+                        T_body_camrot = multiply_transforms(T_body_cam, T_cam_camrot)
+                        T_world_body = get_body_transform(x_ego[1:4], x_ego[5:7])
+                        T_world_camrot = multiply_transforms(T_world_body, T_body_camrot)
+
+                        X1_t = T_world_camrot * [X1; 1]
+                        X2_t = T_world_camrot * [X2; 1]
+
+                        println("X1 and X2 after convering to map frame")
+                        println(X1_t)
+                        println(X2_t)
+
+                        # add to the ego's p1 and p2 values appropriately
+                        x0[1] = X1_t
+                        x0[2] = X2_t
+
+                        # println("UPDATED values of x0's p1 and p2")
+                        # println(x0[1])
+                        # println(x0[2])
+                        # println()
                     end
                 end
 
@@ -209,6 +265,7 @@ function perception(cam_meas_channel, gt_channel, localization_state_channel, pe
         epsilon = 0.00001
         # only run perception_ekf if we had at least one valid bbox 
         if (closest_bbox[1] - 0.0 > epsilon) && (closest_bbox[2] - 0.0 > epsilon) && (closest_bbox[3] - 0.0 > epsilon) && (closest_bbox[4] - 0.0 > epsilon)
+            # x0 = [-91.6639496981265, -5.001254676640403, 0.003, 0.0001, 13.2, 5.7, 5.3] # [p1 p2 theta vel l w h]
             println("we can!")
             mu_k, sigma_k = perception_ekf(x0, closest_bbox, x_ego, delta_t, current_cam_id)
             push!(mus, mu_k)
