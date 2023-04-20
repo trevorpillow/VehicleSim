@@ -217,19 +217,11 @@ function calculate_J1_for_jac_hx(corner_id, x_other)
         h_mult = 1
     end
 
+    θ = x_other[3]
     theta = x_other[3]
     l = 13.2
     w = 5.7
     h = 5.3
-
-    # [1 0 0 0 0.5*l_mult 0 0
-    #     0 1 0 0 0 0.5*w_mult 0
-    #     0 0 0 0 0 0 (0.5+0.5*h_mult)]
-
-    # x = [p1 p2 theta v l w h]
-    # [(-0.5*l*sin(theta)*l_mult) (0.5*l*cos(theta)*l_mult) 0 0 0 0 0
-    #     0 0 (-0.5*w*sin(theta)*w_mult) (0.5*w*cos(theta)*w_mult) 0 0 0
-    #     0 0 0 0 (-0.5*h*sin(theta)*h_mult) (0.5*h*cos(theta)*h_mult) 0]
 
     # original
     # J1 = [1 0 (0.5*(-sin(theta)*l_mult*l-cos(theta)*w_mult*w)) 0 (0.5*(cos(theta)*l_mult)) (0.5*(-sin(theta)*w_mult)) 0
@@ -242,9 +234,14 @@ function calculate_J1_for_jac_hx(corner_id, x_other)
     #     0 0 0 0 0 0 (h_mult*3/4)]
 
     # with l, w, h set to 0
-    J1 = [1 0 (1/4*(-sin(theta)*l_mult*l-cos(theta)*w_mult*w)) 0 0 0 0
-        0 1 (1/4*(cos(theta)*l_mult*l-sin(theta)*w_mult*w)) 0 0 0 0
-        0 0 0 0 0 0 0]
+    # J1 = [1 0 (1/4*(-sin(theta)*l_mult*l-cos(theta)*w_mult*w)) 0 0 0 0
+    #     0 1 (1/4*(cos(theta)*l_mult*l-sin(theta)*w_mult*w)) 0 0 0 0
+    #     0 0 0 0 0 0 0]
+
+    # from prof
+    J1 = [1 0 l_mult*l/2*(-sin(θ))+l_mult*w/2*(-cos(θ)) 0 cos(θ)/2*l_mult -sin(θ)/2*l_mult 0
+        0 1 w_mult*l/2*(cos(θ))+w_mult*w/2*(-sin(θ)) 0 sin(θ)/2*w_mult cos(θ)/2*w_mult 0
+        0 0 0 0 0 0 0.5+h_mult/2]
     # println("J1 from mine")
     # println(J1)
     return J1
