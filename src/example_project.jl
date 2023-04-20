@@ -1,9 +1,9 @@
 struct MyLocalizationType
+    time::Float64
     position::SVector{3,Float64} # Lat and Long
+    orientation::SVector{4, Float64}
     linear_vel::SVector{3,Float64}
     angular_vel::SVector{3,Float64}
-    time::Float64 #time stamp
-    testval::SVector{3, Float64}
 end
 
 struct MyPerceptionType
@@ -130,19 +130,24 @@ function localize(gps_channel, imu_channel, localization_state_channel, gt_chann
         pos_estimate = [pos_estimate[1], pos_estimate[2], 2.64]
 
         avg_angle = mean(direction_vectors)
-        forward = avg_angle # Turning into unit vector makes it NaN
+        forward = avg_angle
+        # if norm(avg_angle) != 0
+        #     forward = avg_angle / norm(avg_angle) # Turning into unit vector makes it NaN
+        # end
         up = [0, 0, 1]
         # right = cross(forward, up)
         right = [0.0, 0.0, 0.0]
 
-        gps_offset = Vector([1.0, 3.0, 2.64]) # Need orientation: Rolling average, old angle is .9 of calculation, new angle is .1. Will approach correct answer
-       
+        gps_offset = Vector([1.0, 3.0, 2.64]) 
         # directional_offset = gps_offset[1]*forward + gps_offset[2]*right + gps_offset[3]*up
         # if !isnan(directional_offset[1])
         #     pos_estimate = pos_estimate + directional_offset
         # end
     
-        localization_state = MyLocalizationType(pos_estimate, vels_estimate[1], vels_estimate[2], time(), forward)
+
+        orientation = QuatVec(forward)
+        orientation = [orientation[1], orientation[2], orientation[3] ,orientation[4]]
+        localization_state = MyLocalizationType(time(), pos_estimate, orientation, vels_estimate[1], vels_estimate[2])
         
         if isready(localization_state_channel)
             take!(localization_state_channel)

@@ -46,12 +46,12 @@ function configure_car!(mvis, state, joints, config)
     v2 = q2[2:4]
     v3 = q3[2:4]
     s = s1*s2 - v1'*v2
-    v = s1*v2+s2*v1+v1×v2
+    v = s1*v2+s2*v1+cross(v1, v2)
     q = [s; v]
     s12 = q[1]
     v12 = q[2:4]
     s = s12*s3 - v12'*v3
-    v = s12*v3+s3*v12+v12×v3
+    v = s12*v3+s3*v12+cross(v12, v3)
     q = [s; v]
     
     for joint in joints

@@ -119,7 +119,7 @@ function rigid_body_dynamics(position, quaternion, velocity, angular_vel, Δt)
     vₙ = quaternion[2:4]
 
     s = sₙ*sᵣ - vₙ'*vᵣ
-    v = sₙ*vᵣ+sᵣ*vₙ+vₙ×vᵣ
+    v = sₙ*vᵣ+sᵣ*vₙ+cross(vₙ,vᵣ)
 
     R = Rot_from_quat(quaternion)  
 
@@ -151,7 +151,7 @@ function Jac_x_f(x, Δt)
     vₙ = x[5:7]
 
     s = sₙ*sᵣ - vₙ'*vᵣ
-    v = sₙ*vᵣ+sᵣ*vₙ+vₙ×vᵣ
+    v = sₙ*vᵣ+sᵣ*vₙ+cross(vₙ, vᵣ)
 
     R = Rot_from_quat([sₙ; vₙ])  
     (J_R_q1, J_R_q2, J_R_q3, J_R_q4) = J_R_q([sₙ; vₙ])
@@ -287,7 +287,7 @@ function imu(vehicle, state_channel, meas_channel; sqrt_meas_cov = Diagonal([0.,
             ω_body = state.v[1:3] # angular_vel
 
             ω_imu = R * ω_body
-            v_imu = R * v_body + p × ω_imu
+            v_imu = R * v_body + cross(p, ω_imu)
 
             meas = [v_imu; ω_imu] + sqrt_meas_cov*randn(6)
 

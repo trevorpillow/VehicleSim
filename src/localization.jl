@@ -106,7 +106,7 @@ function jacfx(position, q, velocity, angular_vel, t)
     vₙ = q[2:4]
 
     s = sₙ*sᵣ - vₙ'*vᵣ
-    v = sₙ*vᵣ+sᵣ*vₙ+vₙ×vᵣ
+    v = sₙ*vᵣ+sᵣ*vₙ+cross(vₙ, vᵣ)
 
     gradrsv = gradsv(q, r, t)
 

@@ -48,7 +48,7 @@ function keyboard_client(host::IPAddr=IPv4(0), port=4444; v_step = 1.0, s_step =
     cam_channel = Channel{CameraMeasurement}(32)
     gt_channel = Channel{GroundTruthMeasurement}(32)
     localization_state_channel = Channel{MyLocalizationType}(1)
-    put!(localization_state_channel, MyLocalizationType([0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0], 0.0, [0.0,0.0, 0.0])) # fills state channel with dummy value
+    put!(localization_state_channel, MyLocalizationType(0.0, [0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0])) # fills state channel with dummy value
 
     @async while isopen(socket)
         sleep(0.001)
@@ -119,7 +119,7 @@ function keyboard_client(host::IPAddr=IPv4(0), port=4444; v_step = 1.0, s_step =
             pos_est = state_est.position
             linear_est = state_est.linear_vel
             angular_est = state_est.angular_vel
-            forward = state_est.testval
+            orientation_est = state_est.orientation
         end
 
         gps_offset = Vector([1.0, 3.0, 2.64]) # What is the offset of the GPS relative to the center of the car?
@@ -143,11 +143,12 @@ function keyboard_client(host::IPAddr=IPv4(0), port=4444; v_step = 1.0, s_step =
             gt_meas = take!(gt_channel)
             gt_pos = gt_meas.position
             gt_linear_vel = gt_meas.velocity
+            gt_orientation = gt_meas.orientation
         end
         # @info "Gt:"
         # @info gt_linear_vel
-        @info "forward:"
-        @info forward
+        @info "est_orientation:"
+        @info orientation_est
         @info "offset:"
         @info gt_pos
         # @info ""
