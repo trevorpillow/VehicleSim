@@ -137,26 +137,26 @@ function keyboard_client(host::IPAddr=IPv4(0), port=4444; v_step = 1.0, s_step =
         # raw_est = pos_est + [0, 0, 2.64]
         # pos_est = pos_est + directional_offset
 
-        gt_pos = [0.0, 0.0, 0.0]
-        gt_linear_vel = [0.0, 0.0, 0.0]
-        while isready(gt_channel)
-            gt_meas = take!(gt_channel)
-            gt_pos = gt_meas.position
-            gt_linear_vel = gt_meas.velocity
-            gt_orientation = gt_meas.orientation
-        end
+        # gt_pos = [0.0, 0.0, 0.0]
+        # gt_linear_vel = [0.0, 0.0, 0.0]
+        # while isready(gt_channel)
+        #     gt_meas = take!(gt_channel)
+        #     gt_pos = gt_meas.position
+        #     gt_linear_vel = gt_meas.velocity
+        #     gt_orientation = gt_meas.orientation
+        # end
         # @info "Gt:"
         # @info gt_linear_vel
-        @info "est_orientation:"
-        @info orientation_est
-        @info "offset:"
-        @info gt_pos
+        # @info "est_orientation:"
+        # @info orientation_est
+        # @info "offset:"
+        # @info gt_pos
         # @info ""
         # @info "raw diff:"
         # @info gt_pos - raw_est
         # @info "offset diff:"
         # @info gt_pos - pos_est
-        @info ""
+        # @info ""
     end
 end
 
