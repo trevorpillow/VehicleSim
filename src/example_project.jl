@@ -130,98 +130,116 @@ function perception(cam_meas_channel, gt_channel, localization_state_channel, pe
     #     image_height::Int # pixels
     #     bounding_boxes::Vector{SVector{4, Int}}
     # end
-    @info "Im in perceptionsss"
+    # @info "Im in perceptionsss"
     while true
-        display("in while loop")
-        """
-            1. Get Camera measurements and ego car's localization
-        """
-        fresh_cam_meas = []
-        while isready(cam_meas_channel)
-            display("cam_meas is ready")
-            meas = take!(cam_meas_channel)
-            push!(fresh_cam_meas, meas)
-        end
-        # display("now getting latest_localization_state")
-        latest_localization_state = fetch(localization_state_channel)
+        #     display("in while loop")
+        #     """
+        #         1. Get Camera measurements and ego car's localization
+        #     """
+        #     fresh_cam_meas = []
+        #     while isready(cam_meas_channel)
+        #         display("cam_meas is ready")
+        #         meas = take!(cam_meas_channel)
+        #         push!(fresh_cam_meas, meas)
+        #     end
+        #     # display("now getting latest_localization_state")
+        #     latest_localization_state = fetch(localization_state_channel)
 
-        # display("fresh_cam_meas and latest_localization_state")
-        # display(fresh_cam_meas)
-        # display(latest_localization_state)
+        #     # display("fresh_cam_meas and latest_localization_state")
+        #     # display(fresh_cam_meas)
+        #     # display(latest_localization_state)
 
-        # get the cam measurems - five of them 
-        # sort them by time
-        # so ekf update on them --> might have to add parameters to perception_ekf to take into account of prev ones
-        # iterate now
+        #     # get the cam measurems - five of them 
+        #     # sort them by time
+        #     # so ekf update on them --> might have to add parameters to perception_ekf to take into account of prev ones
+        #     # iterate now
 
-        # example output:
-        #     VehicleSim.CameraMeasurement(1.681877829179e9, 1, 0.01, 0.001, 640, 480, StaticArraysCore.SVector{4, Int64}[[241, 321, 242, 322]])
-        #     VehicleSim.CameraMeasurement(1.681877829179e9, 2, 0.01, 0.001, 640, 480, StaticArraysCore.SVector{4, Int64}[[241, 321, 242, 322]])
-        #    VehicleSim.MyLocalizationType([-91.66395055946873, -75.0012541544436], [-1.9773902494838096e-6, -1.2151226606292585e-6, -4.283124700350768e-5], [7.298334680266097e-7, -2.3784400049989193e-6, -1.3560088557312447e-8], 1.681877777161e9)
+        #     # example output:
+        #     #     VehicleSim.CameraMeasurement(1.681877829179e9, 1, 0.01, 0.001, 640, 480, StaticArraysCore.SVector{4, Int64}[[241, 321, 242, 322]])
+        #     #     VehicleSim.CameraMeasurement(1.681877829179e9, 2, 0.01, 0.001, 640, 480, StaticArraysCore.SVector{4, Int64}[[241, 321, 242, 322]])
+        #     #    VehicleSim.MyLocalizationType([-91.66395055946873, -75.0012541544436], [-1.9773902494838096e-6, -1.2151226606292585e-6, -4.283124700350768e-5], [7.298334680266097e-7, -2.3784400049989193e-6, -1.3560088557312447e-8], 1.681877777161e9)
 
-        """
-            2. Run ekf
-        """
-        # NOTE: ONE EKF PER CAM PER VEHICLE SEEN
-        gt = fetch(gt_channel)
-        println("gt stuff: id, orientation and position")
-        println(gt.vehicle_id)
-        println(gt.orientation)
-        println(gt.position)
+        #     """
+        #         2. Run ekf
+        #     """
+        #     # NOTE: ONE EKF PER CAM PER VEHICLE SEEN
+        #     gt = fetch(gt_channel)
+        #     println("gt stuff: id, orientation and position")
+        #     println(gt.vehicle_id)
+        #     println(gt.orientation)
+        #     println(gt.position)
 
-        # if gt.vehicle_id != 1
-        x_ego_o = gt.orientation
-        x_ego_p = gt.position
-        x_ego = [x_ego_o[1] x_ego_o[2] x_ego_o[3] x_ego_o[4] x_ego_p[1] x_ego_p[2] x_ego_p[3]]
-        println(x_ego)
+        #     # if gt.vehicle_id != 1
+        #     x_ego_o = gt.orientation
+        #     x_ego_p = gt.position
+        #     x_ego = [x_ego_o[1] x_ego_o[2] x_ego_o[3] x_ego_o[4] x_ego_p[1] x_ego_p[2] x_ego_p[3]]
+        #     println(x_ego)
 
-        delta_t = 0.004
-        cam_id = 2
+        #     delta_t = 0.004
+        #     cam_id = 2
 
-        println("x0::")
-        x0 = [x_ego[5] + 10, x_ego[6] + 10, 0.01, 0.01, 13.2, 5.7, 5.3] # [p1 p2 theta vel l w h]
-        println(x0)
-        # x0 = [-91.6639496981265, -5.001254676640403, 0.01, 0.01, 13.2, 5.7, 5.3]
-        bbox = [241, 309, 242, 312]
-        mus = []
-        sigmas = []
+        #     println("x0::")
+        #     # -61.6639496981265 -35.00125467663771????????? for xego[5] and [6]
+        #     # image_ratio_width = 640 / 40 # change '40' to something like bbox width or shutdown
+        #     # image_ratio_height = 480 / 40 # same as above
+        #     # p1_offset = 10 * image_ratio_width
+        #     # p2_offset = 10 * image_ratio_height
+        #     p1_offset = 10
+        #     p2_offset = 10
+        #     # prob have to do some sin, cos, velocity stuff?
 
-        println("about fresh_cam_meas")
-        println(length(fresh_cam_meas))
+        #     x0 = [x_ego[5] + p1_offset, x_ego[6] + p2_offset, 0.01, 0.01, 13.2, 5.7, 5.3] # [p1 p2 theta vel l w h]
+        #     println(x0)
+        #     # x0 = [-91.6639496981265, -5.001254676640403, 0.01, 0.01, 13.2, 5.7, 5.3]
+        #     bbox = [241, 309, 242, 312]
+        #     mus = []
+        #     sigmas = []
 
-        # ny[[-91.02649421767202, -5.005907915629363, 0.04381970433404755, 0.010203947603373214, 13.199999999999998, 5.7, 5.300000000000001], [-91.02649421767202, -5.005907915629363, 0.04381970433404755, 0.010203947603373214, 13.199999999999998, 5.7, 5.300000000000001], [-91.02649421767202, -5.005907915629363, 0.04381970433404755, 0.010203947603373214, 13.199999999999998, 5.7, 5.300000000000001], [-91.02649421767202, -5.005907915629363, 0.04381970433404755, 0.010203947603373214, 13.199999999999998, 5.7, 5.300000000000001], [-91.02649421767202, -5.005907915629363, 0.04381970433404755, 0.010203947603373214, 13.199999999999998, 5.7, 5.300000000000001]]
-        if length(fresh_cam_meas) > 5
-            for i = 1:5
-                mu_k, sigma_k = perception_ekf(x0, fresh_cam_meas[i].bounding_boxes, x_ego, delta_t, fresh_cam_meas[i].cam_id)
+        #     # ny[[-91.02649421767202, -5.005907915629363, 0.04381970433404755, 0.010203947603373214, 13.199999999999998, 5.7, 5.300000000000001], [-91.02649421767202, -5.005907915629363, 0.04381970433404755, 0.010203947603373214, 13.199999999999998, 5.7, 5.300000000000001], [-91.02649421767202, -5.005907915629363, 0.04381970433404755, 0.010203947603373214, 13.199999999999998, 5.7, 5.300000000000001], [-91.02649421767202, -5.005907915629363, 0.04381970433404755, 0.010203947603373214, 13.199999999999998, 5.7, 5.300000000000001], [-91.02649421767202, -5.005907915629363, 0.04381970433404755, 0.010203947603373214, 13.199999999999998, 5.7, 5.300000000000001]]
+        #     if length(fresh_cam_meas) > 5
+        #         # println("about fresh_cam_meas")
+        #         # println(length(fresh_cam_meas))
+        #         # println(fresh_cam_meas)
+        #         # println(fresh_cam_means[1])
+        #         # println(fresh_cam_means[1].bonding_boxes)
 
-                # x0 = mu_k
-                push!(mus, mu_k)
-                push!(sigmas, sigma_k)
-                println("pushed mu_k and sigma_k")
-            end
-        end
-        # end
+        #         for i = 1:5
+        #             mu_k, sigma_k = perception_ekf(x0, bbox, x_ego, delta_t, cam_id)
 
-        println()
-        println("final mu and sigma")
-        println(mus)
-        println(sigmas)
-        println()
-        # println(mus[5])
-        # println(sigmas[5])
-        # println()
+        #             # x0 = mu_k
+        #             push!(mus, mu_k)
+        #             push!(sigmas, sigma_k)
+        #             println("pushed mu_k and sigma_k")
+        #         end
+        #     end
+        #     # end
 
-        sleep(5)
+        #     println()
+        #     println("final mu and sigma")
+        #     println(mus)
+        #     println(sigmas)
+        #     println()
+        #     # println(mus[5])
+        #     # println(sigmas[5])
+        #     # println()
 
+        #     sleep(5)
 
         """
             3. Output the new perception state
         """
-        # perception_state = MyPerceptionType(0, 0.0)
-        # if isready(perception_state_channel)
-        #     take!(perception_state_channel)
-        # end
-        # put!(perception_state_channel, perception_state)
+        position = SVector(-91.6639496981265, -5.001254676640403, 2.7)
+        orientation = SVector(0.0, 0.0, 0.0, 0.0)
+        velocity = SVector(0.0, 0.0001, 0.0)
+        size = SVector(13.2, 5.7, 5.3)
+        perception_state = MyPerceptionType(1.06e6, 2, position, orientation, velocity, size)
+        println("perception_state::")
+        println(perception_state)
+        println()
+        if isready(perception_state_channel)
+            take!(perception_state_channel)
+        end
+        put!(perception_state_channel, perception_state)
     end
 end
 
