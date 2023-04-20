@@ -15,6 +15,8 @@ using Suppressor
 using Sockets
 using Serialization
 using StaticArrays
+using Statistics
+using Quaternionic
 
 include("view_car.jl")
 include("objects.jl")

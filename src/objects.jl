@@ -35,7 +35,7 @@ function quaternion_multiply!(q::Quaternion{T}, q1::Quaternion{T}, q2::Quaternio
     v1 = @SVector [q1.quaternion.x, q1.quaternion.y, q1.quaternion.z]
     v2 = @SVector [q2.quaternion.x, q2.quaternion.y, q2.quaternion.z]
     s = s1*s2 - v1'*v2
-    v = s1*v2+s2*v1+v1×v2
+    v = s1*v2+s2*v1+cross(v1, v2)
     q[1] = s
     q[2:4] = v
 end
@@ -53,7 +53,7 @@ function quaternion_multiply!(q, ω, q2::Quaternion{T}) where T
     v1 = @SVector [ω[1], ω[2], ω[3]]
     v2 = @SVector [q2[2], q2[3], q2[4]]
     s = s1*s2 - v1'*v2
-    v = s1*v2+s2*v1+v1×v2
+    v = s1*v2+s2*v1+cross(v1, v2)
     q[1] = s
     q[2:4] = v
 end
@@ -132,7 +132,7 @@ function rigid_body!(drbs, rbs, p, t)
     R = quaternion_to_rotation_matrix(q)
     I⁻¹ = R' * I⁻¹ * R
     ω = I⁻¹ * rbs[11:13]
-    τ = (R*r) × F - 100*ω
+    τ = cross((R*r), F - 100*ω)
     drbs[1:3] = rbs[8:10] ./ mass
     quaternion_multiply!(@view(drbs[4:7]), ω, q)
     drbs[8:10] = F + Fg

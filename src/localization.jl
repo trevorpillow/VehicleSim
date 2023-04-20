@@ -1,26 +1,54 @@
-function localize(gps_channel, imu_channel, localization_state_channel)
-    # Set up algorithm / initialize variables
-    while true
-        fresh_gps_meas = []
-        while isready(gps_channel)
-            meas = take!(gps_channel)
-            push!(fresh_gps_meas, meas)
-        end
-        fresh_imu_meas = []
-        while isready(imu_channel)
-            meas = take!(imu_channel)
-            push!(fresh_imu_meas, meas)
-        end
-        
-        # process measurements
+# function localize(gps_channel, imu_channel, localization_state_channel)
+#     # Set up algorithm / initialize variables
+#     @info "Wrong localize!"
+#     gps_estimates = []
+#     imu_estimates = []
+#     sqrt_meas_cov = Diagonal([1.0, 1.0])
 
-        # localization_state = MyLocalizationType(0,0.0)
-        # if isready(localization_state_channel)
-        #     take!(localization_state_channel)
-        # end
-        # put!(localization_state_channel, localization_state)
-    end 
-end
+#     fresh_gps_meas = []
+#     while isready(gps_channel)
+#         meas = take!(gps_channel)
+#         push!(fresh_gps_meas, meas)
+#     end
+#     fresh_imu_meas = []
+#     while isready(imu_channel)
+#         meas = take!(imu_channel)
+#         push!(fresh_imu_meas, meas)
+#     end
+
+#     if (gps_estimates.isempty())
+#         gps_estimates.push!(fresh_gps_meas[0])
+#     end
+
+#     if (imu_estimates.isempty())
+#         imu_estimates.push!(fresh_imu_meas[0])
+#     end
+
+#     @info fresh_gps_meas
+
+#     # What are meas_var and cov?
+#     # Also, all we have for measurements is pos and velocities, how to get quaternions n such?
+
+#     mu_hat = rigid_body_dynamics(position, quaternion, velocity, angular_vel, Δt)
+#     A = jacfx(mu_prev)
+#     sigma_hat = A * sigma_prev * A' + sqrt_meas_cov # Is this right? taken from measurements module
+    
+#     # z: measurement received
+#     z = h(xₖ) + sqrt(meas_var)
+#     C = jac_hx(mu_hat)
+#     d = h(mu_hat) - C * mu_hat
+
+#     # sigma_new: The covariance
+#     sigma_new = inv(inv(sigma_hat) + C' * inv(meas_var) * C)
+#     # mu_new: Estimated measurement, different for gps or imu
+#     mu_new = sigma_new * (inv( sigma_hat) * mu_hat + C' * inv(meas_var) * (z - d))
+
+#     localization_state = MyLocalizationType(0,0.0)
+#     if isready(localization_state_channel)
+#         take!(localization_state_channel)
+#     end
+#     put!(localization_state_channel, localization_state)
+# end
 
 # Returns a 4x3 matrix the gradient of s;v with respect to r
 function gradsv(quaternion, angular_vel, Δt)
@@ -62,7 +90,7 @@ function gradsv(quaternion, angular_vel, Δt)
     return grad
 end
 
-function jacf(position, q, velocity, angular_vel, t)
+function jacfx(position, q, velocity, angular_vel, t)
     r = angular_vel
     mag = norm(r)
 
@@ -78,7 +106,7 @@ function jacf(position, q, velocity, angular_vel, t)
     vₙ = q[2:4]
 
     s = sₙ*sᵣ - vₙ'*vᵣ
-    v = sₙ*vᵣ+sᵣ*vₙ+vₙ×vᵣ
+    v = sₙ*vᵣ+sᵣ*vₙ+cross(vₙ, vᵣ)
 
     gradrsv = gradsv(q, r, t)
 

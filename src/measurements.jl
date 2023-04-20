@@ -119,7 +119,7 @@ function rigid_body_dynamics(position, quaternion, velocity, angular_vel, Δt)
     vₙ = quaternion[2:4]
 
     s = sₙ*sᵣ - vₙ'*vᵣ
-    v = sₙ*vᵣ+sᵣ*vₙ+vₙ×vᵣ
+    v = sₙ*vᵣ+sᵣ*vₙ+cross(vₙ,vᵣ)
 
     R = Rot_from_quat(quaternion)  
 
@@ -151,7 +151,9 @@ function Jac_x_f(x, Δt)
     vₙ = x[5:7]
 
     s = sₙ*sᵣ - vₙ'*vᵣ
-    v = sₙ*vᵣ+sᵣ*vₙ+vₙ×vᵣ
+
+    v = sₙ*vᵣ+sᵣ*vₙ+cross(vₙ, vᵣ)
+
 
     R = Rot_from_quat([sₙ; vₙ])  
     (J_R_q1, J_R_q2, J_R_q3, J_R_q4) = J_R_q([sₙ; vₙ])
@@ -287,7 +289,7 @@ function imu(vehicle, state_channel, meas_channel; sqrt_meas_cov = Diagonal([0.,
             ω_body = state.v[1:3] # angular_vel
 
             ω_imu = R * ω_body
-            v_imu = R * v_body + p × ω_imu
+            v_imu = R * v_body + cross(p, ω_imu)
 
             meas = [v_imu; ω_imu] + sqrt_meas_cov*randn(6)
 
@@ -390,6 +392,7 @@ function cameras(vehicles, state_channels, cam_channels; max_rate=10.0, focal_le
 end
 
 function ground_truth(vehicles, state_channels, gt_channels; max_rate=10.0) 
+    n = 0
     min_Δ = 1.0/max_rate
     t = time()
     num_vehicles = length(vehicles)
@@ -400,8 +403,11 @@ function ground_truth(vehicles, state_channels, gt_channels; max_rate=10.0)
         tnow = time()
         if tnow - t > min_Δ
             t = tnow
+            # if n > 1000 && n < 1010
+            #     @info states[1].q[5:7] # No idea but GT is fixed now
+            # end
             measurements = [GroundTruthMeasurement(t, i, 
-                                                   states[i].q[5:7], 
+                                                   states[i].q[5:7], # position
                                                    states[i].q[1:4], 
                                                    states[i].v[4:6], 
                                                    states[i].v[1:3],
@@ -410,6 +416,8 @@ function ground_truth(vehicles, state_channels, gt_channels; max_rate=10.0)
                 foreach(m->put!(gt_channels[i], m), measurements)
             end
         end
+
+        n = n + 1
     end
 end
 

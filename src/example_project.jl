@@ -1,8 +1,9 @@
 struct MyLocalizationType
-    latlong::SVector{2,Float64} # Lat and Long
-    linear_velocity::SVector{3,Float64}
-    angular_velocity::SVector{3,Float64}
-    time::Float64 #time stamp
+    time::Float64
+    position::SVector{3,Float64} # Lat and Long
+    orientation::SVector{4, Float64}
+    linear_vel::SVector{3,Float64}
+    angular_vel::SVector{3,Float64}
 end
 
 struct MyPerceptionType
@@ -15,13 +16,12 @@ struct MyPerceptionType
     size::SVector{3,Float64} # length, width, height of 3d bounding box centered at (position/orientation)
 end
 
-
 function test_algorithms(gt_channel,
     localization_state_channel,
     perception_state_channel,
     ego_vehicle_id)
     estimated_vehicle_states = Dict{Int,Tuple{Float64,Union{SimpleVehicleState,FullVehicleState}}}
-    gt_vehicle_states = Dict{Int,GroundTruthMeasuremen}
+    gt_vehicle_states = Dict{Int,GroundTruthMeasurement}
 
     t = time()
     while true
@@ -88,29 +88,67 @@ function test_algorithms(gt_channel,
 end
 
 
-function localize(gps_channel, imu_channel, localization_state_channel, gt_channel)
-    # Set up algorithm / initialize variables
-    for n in 1:100
-        fresh_gps_meas = []
-        while isready(gps_channel)
+function localize(gps_channel, imu_channel, localization_state_channel, gt_channels)
+
+    # @info "Starting localize..."
+    lats_longs = [[0.0, 0.0]]
+    vels = [[[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]]]
+    direction_vectors = [[0.0, 0.0, 0.0]]
+    while true
+        sleep(0.0001) # Hogs all the cpu without this
+
+        if isready(gps_channel)
             meas = take!(gps_channel)
-            push!(fresh_gps_meas, meas)
+            push!(lats_longs, [meas.lat, meas.long])
+
+            pos_estimate = mean(lats_longs)
+            prev_state = fetch(localization_state_channel)
+            delta_pos = [pos_estimate[1] - prev_state.position[1], pos_estimate[2] - prev_state.position[2], 0.0]
+            push!(direction_vectors, delta_pos)
         end
-        fresh_imu_meas = []
-        while isready(imu_channel)
+
+        if isready(imu_channel)
             meas = take!(imu_channel)
-            push!(fresh_imu_meas, meas)
+            push!(vels, [meas.linear_vel, meas.angular_vel])
         end
 
-        # Using GT until we get a real algorithm
-        gt = fetch(gt_channel)
-        latlong = gt.position[1:2]
+        if length(lats_longs) > 1
+            old_meas = popfirst!(lats_longs)
+        end
 
-        # process measurements
-        jacf(gt.orientation, gt.orientation, gt.velocity, gt.angular_velocity, 5)
+        if length(vels) > 1
+            old_meas = popfirst!(vels)
+        end
 
-        localization_state = MyLocalizationType(latlong, gt.velocity, gt.angular_velocity, gt.time)
+        pos_estimate = mean(lats_longs)
 
+        if length(direction_vectors) > 50
+            old_meas = popfirst!(direction_vectors)
+        end
+        
+        vels_estimate = mean(vels)
+        pos_estimate = [pos_estimate[1], pos_estimate[2], 2.64]
+
+        avg_angle = mean(direction_vectors)
+        forward = avg_angle
+        # if norm(avg_angle) != 0
+        #     forward = avg_angle / norm(avg_angle) # Turning into unit vector makes it NaN
+        # end
+        up = [0, 0, 1]
+        # right = cross(forward, up)
+        right = [0.0, 0.0, 0.0]
+
+        gps_offset = Vector([1.0, 3.0, 2.64]) 
+        # directional_offset = gps_offset[1]*forward + gps_offset[2]*right + gps_offset[3]*up
+        # if !isnan(directional_offset[1])
+        #     pos_estimate = pos_estimate + directional_offset
+        # end
+    
+
+        orientation = QuatVec(forward)
+        orientation = [orientation[1], orientation[2], orientation[3] ,orientation[4]]
+        localization_state = MyLocalizationType(time(), pos_estimate, orientation, vels_estimate[1], vels_estimate[2])
+        
         if isready(localization_state_channel)
             take!(localization_state_channel)
         end
