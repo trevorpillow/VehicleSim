@@ -8,6 +8,7 @@ struct GPSMeasurement <: Measurement
     time::Float64
     lat::Float64
     long::Float64
+    heading::Float64
 end
 
 """
@@ -75,6 +76,27 @@ function Rot_from_quat(q)
          2(qx*qz-qw*qy) 2(qw*qx+qy*qz) qw^2-qx^2-qy^2+qz^2]
 end
 
+function J_R_q(q)
+    qw = q[1]
+    qx = q[2]
+    qy = q[3]
+    qz = q[4]
+
+    dRdq1 = 2*[qw -qz qy;
+             qz qw -qx;
+             -qy qx qw]
+    dRdq2 = 2*[qx qy qz;
+               qy -qx -qw;
+               qz qw -qx]
+    dRdq3 = 2*[-qy qx qw;
+               qx qy qz;
+               -qw qz -qy]
+    dRdq4 = 2*[-qz -qw qx;
+               qw -qz qy;
+               qx qy qz]
+    (dRdq1, dRdq2, dRdq3, dRdq4)
+end
+
 """
 Can be used as process model for EKF
 which estimates xₖ = [position; quaternion; velocity; angular_vel]
@@ -91,20 +113,86 @@ function rigid_body_dynamics(position, quaternion, velocity, angular_vel, Δt)
         vᵣ = zeros(3)
     else
         sᵣ = cos(mag*Δt / 2.0)
-        vᵣ = sin(mag*Δt / 2.0) * axis
+        vᵣ = sin(mag*Δt / 2.0) * (r / mag)
     end
 
     sₙ = quaternion[1]
     vₙ = quaternion[2:4]
 
     s = sₙ*sᵣ - vₙ'*vᵣ
-    v = sₙ*vᵣ+sᵣ*vₙ+vₙ×vᵣ
+    v = sₙ*vᵣ+sᵣ*vₙ+cross(vₙ,vᵣ)
 
-    new_position = position + Δt * velocity
+    R = Rot_from_quat(quaternion)  
+
+    new_position = position + Δt * R * velocity
     new_quaternion = [s; v]
     new_velocity = velocity
     new_angular_vel = angular_vel
     return [new_position; new_quaternion; new_velocity; new_angular_vel]
+end
+
+function f(x, Δt)
+    rigid_body_dynamics(x[1:3], x[4:7], x[8:10], x[11:13], Δt)
+end
+
+function Jac_x_f(x, Δt)
+    J = zeros(13, 13)
+
+    r = x[11:13]
+    mag = norm(r)
+    if mag < 1e-5
+        sᵣ = 1.0
+        vᵣ = zeros(3)
+    else
+        sᵣ = cos(mag*Δt / 2.0)
+        vᵣ = sin(mag*Δt / 2.0) * (r / mag)
+    end
+
+    sₙ = x[4]
+    vₙ = x[5:7]
+
+    s = sₙ*sᵣ - vₙ'*vᵣ
+
+    v = sₙ*vᵣ+sᵣ*vₙ+cross(vₙ, vᵣ)
+
+
+    R = Rot_from_quat([sₙ; vₙ])  
+    (J_R_q1, J_R_q2, J_R_q3, J_R_q4) = J_R_q([sₙ; vₙ])
+    
+    #new_position = position + Δt * R * velocity
+    #new_quaternion = [s; v]
+    #new_velocity = velocity
+    #new_angular_vel = angular_vel
+    
+    velocity = x[8:10]
+
+    J[1:3, 1:3] = I(3)
+    J[1:3, 4] = Δt * J_R_q1*velocity
+    J[1:3, 5] = Δt * J_R_q2*velocity
+    J[1:3, 6] = Δt * J_R_q3*velocity
+    J[1:3, 7] = Δt * J_R_q4*velocity
+    J[1:3, 8:10] = Δt * R
+    J[4, 4] = sᵣ
+    J[4, 5:7] = -vᵣ'
+    J[5:7, 4] = vᵣ
+    J[5:7, 5:7] = [sᵣ vᵣ[3] -vᵣ[2];
+                   -vᵣ[3] sᵣ vᵣ[1];
+                   vᵣ[2] -vᵣ[1] sᵣ]
+
+    if mag > 1e-5
+        Jsv_srvr = [sₙ -vₙ'
+                    vₙ [sₙ -vₙ[3] vₙ[2];
+                        vₙ[3] sₙ -vₙ[1];
+                        -vₙ[2] vₙ[1] sₙ]]
+        Jsrvr_mag = [-sin(mag*Δt / 2.0) * Δt / 2; sin(mag*Δt/2.0) * (-r / mag^2) + cos(mag*Δt/2)*Δt/2 * r/mag]
+        Jsrvr_r = [zeros(1,3); sin(mag*Δt / 2) / mag * I(3)]
+        Jmag_r = 1/mag * r'
+
+        J[4:7, 11:13] = Jsv_srvr * (Jsrvr_mag*Jmag_r + Jsrvr_r)
+    end
+    J[8:10, 8:10] = I(3)
+    J[11:13, 11:13] = I(3)
+    J
 end
 
 function get_rotated_camera_transform()
@@ -145,6 +233,14 @@ function get_body_transform(quat, loc)
     [R loc]
 end
 
+function J_Tbody(x)
+    J_Tbody_xyz = (zeros(3,4), zeros(3,4), zeros(3,4))
+    for i = 1:3
+       J_Tbody_xyz[i][i,4] = 1.0
+    end
+    return (J_Tbody_xyz, [[dR zeros(3)] for dR in J_R_q(x[4:7])])
+end
+
 function invert_transform(T)
     R = T[1:3,1:3]
     t = T[1:3,end]
@@ -164,29 +260,63 @@ function multiply_transforms(T1, T2)
     T = T[1:3, :]
 end
 
-function gps(vehicle, state_channel, meas_channel; sqrt_meas_cov = Diagonal([1.0, 1.0]), max_rate=20.0)
-    min_Δ = 1.0/max_rate
-    t = time()
+function h_gps(x)
     T = get_gps_transform()
     gps_loc_body = T*[zeros(3); 1.0]
+    xyz_body = x[1:3] # position
+    q_body = x[4:7] # quaternion
+    Tbody = get_body_transform(q_body, xyz_body)
+    xyz_gps = Tbody * [gps_loc_body; 1]
+    yaw = extract_yaw_from_quaternion(q_body)
+    meas = [xyz_gps[1:2]; yaw]
+end
+
+function Jac_h_gps(x)
+    T = get_gps_transform()
+    gps_loc_body = T*[zeros(3); 1.0]
+    xyz_body = x[1:3] # position
+    q_body = x[4:7] # quaternion
+    Tbody = get_body_transform(q_body, xyz_body)
+    xyz_gps = Tbody * [gps_loc_body; 1]
+    yaw = extract_yaw_from_quaternion(q_body)
+    #meas = [xyz_gps[1:2]; yaw]
+    J = zeros(3, 13)
+    (J_Tbody_xyz, J_Tbody_q) = J_Tbody(x)
+    for i = 1:3
+        J[1:2,i] = (J_Tbody_xyz[i]*[gps_loc_body; 1])[1:2]
+    end
+    for i = 1:4
+	J[1:2,3+i] = (J_Tbody_q[i]*[gps_loc_body; 1])[1:2]
+    end
+    w = q_body[1]
+    x = q_body[2]
+    y = q_body[3]
+    z = q_body[4]
+    J[3,4] = -(2 * z * (-1 + 2 * (y^2 + z^2)))/(4 * (x * y + w * z)^2 + (1 - 2 * (y^2 + z^2))^2)
+    J[3,5] = -(2 * y * (-1 + 2 * (y^2 + z^2)))/(4 * (x * y + w * z)^2 + (1 - 2 * (y^2 + z^2))^2)
+    J[3,6] = (2 * (x + 2 * x * y^2 + 4 * w * y * z - 2 * x * z^2))/(1 + 4 * y^4 + 8 * w * x * y * z + 4 * (-1 + w^2) * z^2 + 4 * z^4 + 4 * y^2 * (-1 + x^2 + 2 * z^2))
+    J[3,7] = (2 * (w - 2 * w * y^2 + 4 * x * y * z + 2 * w * z^2))/(1 + 4 * y^4 + 8 * w * x * y * z + 4 * (-1 + w^2) * z^2 + 4 * z^4 + 4 * y^2 * (-1 + x^2 + 2 * z^2))
+    J
+end
+ 
+function gps(vehicle, state_channel, meas_channel; sqrt_meas_cov = Diagonal([1.0, 1.0, 0.1]), max_rate=10.0)
+    min_Δ = 1.0/max_rate
+    t = time()
     while true
         sleep(0.0001)
         state = fetch(state_channel)
         tnow = time()
         if tnow - t > min_Δ
             t = tnow
-            xyz_body = state.q[5:7] # position
-            q_body = state.q[1:4] # quaternion
-            Tbody = get_body_transform(q_body, xyz_body)
-            xyz_gps = Tbody * [gps_loc_body; 1]
-            meas = xyz_gps[1:2] + sqrt_meas_cov*randn(2)
-            gps_meas = GPSMeasurement(t, meas[1], meas[2])
+	    x = [state.q[5:7]; state.q[1:4]; state.v[4:6]; state.v[1:3]]
+	    meas = h_gps(x) + sqrt_meas_cov*randn(3)
+            gps_meas = GPSMeasurement(t, meas[1], meas[2], meas[3])
             put!(meas_channel, gps_meas)
         end
     end
 end
 
-function imu(vehicle, state_channel, meas_channel; sqrt_meas_cov = Diagonal([0.01, 0.01, 0.01, 0.01, 0.01, 0.01]), max_rate=20.0)
+function imu(vehicle, state_channel, meas_channel; sqrt_meas_cov = Diagonal([0.001, 0.001, 0.001, 0.001, 0.001, 0.001]), max_rate=10.0) # Don't use 
     min_Δ = 1.0/max_rate
     t = time()
     T_body_imu = get_imu_transform()
@@ -204,7 +334,7 @@ function imu(vehicle, state_channel, meas_channel; sqrt_meas_cov = Diagonal([0.0
             ω_body = state.v[1:3] # angular_vel
 
             ω_imu = R * ω_body
-            v_imu = R * v_body + p × ω_imu
+            v_imu = R * v_body + cross(p, ω_imu)
 
             meas = [v_imu; ω_imu] + sqrt_meas_cov*randn(6)
 
@@ -256,7 +386,6 @@ function cameras(vehicles, state_channels, cam_channels; max_rate=10.0, focal_le
         if tnow - t > min_Δ
             t = tnow
             for i = 1:num_vehicles             
-                bboxes = []
                 ego_state = states[i]
                 T_world_body = get_body_transform(ego_state.q[1:4], ego_state.q[5:7])
                 T_world_camrot1 = multiply_transforms(T_world_body, T_body_camrot1)
@@ -264,6 +393,7 @@ function cameras(vehicles, state_channels, cam_channels; max_rate=10.0, focal_le
                 T_camrot1_world = invert_transform(T_world_camrot1)
                 T_camrot2_world = invert_transform(T_world_camrot2)
                 for (camera_id, transform) in zip((1,2), (T_camrot1_world, T_camrot2_world))
+                    bboxes = []
                     
                     for j = 1:num_vehicles
                         j == i && continue
@@ -293,10 +423,11 @@ function cameras(vehicles, state_channels, cam_channels; max_rate=10.0, focal_le
                             top = convert_to_pixel(image_height, pixel_len, top)
                             bot = convert_to_pixel(image_height, pixel_len, bot)
                             left = convert_to_pixel(image_width, pixel_len, left)
-                            top = convert_to_pixel(image_width, pixel_len, right)
+                            right = convert_to_pixel(image_width, pixel_len, right)
                             push!(bboxes, SVector(top, left, bot, right))
                         end
                     end
+                
                     meas = CameraMeasurement(t, camera_id, focal_len, pixel_len, image_width, image_height, bboxes)
                     put!(cam_channels[i], meas)
                 end
@@ -306,6 +437,7 @@ function cameras(vehicles, state_channels, cam_channels; max_rate=10.0, focal_le
 end
 
 function ground_truth(vehicles, state_channels, gt_channels; max_rate=10.0) 
+    n = 0
     min_Δ = 1.0/max_rate
     t = time()
     num_vehicles = length(vehicles)
@@ -316,8 +448,11 @@ function ground_truth(vehicles, state_channels, gt_channels; max_rate=10.0)
         tnow = time()
         if tnow - t > min_Δ
             t = tnow
+            # if n > 1000 && n < 1010
+            #     @info states[1].q[5:7] # No idea but GT is fixed now
+            # end
             measurements = [GroundTruthMeasurement(t, i, 
-                                                   states[i].q[5:7], 
+                                                   states[i].q[5:7], # position
                                                    states[i].q[1:4], 
                                                    states[i].v[4:6], 
                                                    states[i].v[1:3],
@@ -326,7 +461,39 @@ function ground_truth(vehicles, state_channels, gt_channels; max_rate=10.0)
                 foreach(m->put!(gt_channels[i], m), measurements)
             end
         end
+
+        n = n + 1
     end
+end
+
+function update_targets(target_channels, state_channels, target_segments, map)
+    scores = zeros(Int, length(target_channels))
+    while true
+        sleep(0.001)
+        for i = 1:length(target_channels)
+            current_target = fetch(target_channels[i])
+            state = fetch(state_channels[i])
+            pos = state.q[5:6]
+            vel = state.v[4]
+            if reached_target(pos, vel, map[current_target])
+                scores[i] += 1
+                new_target = rand(setdiff(target_segments, current_target))
+		        @info "Vehicle $i reached target! New target is $new_target"
+		        for i = 1:length(target_channels)
+		            @info "Scores: team $i has $(scores[i]) successful pickup/dropoffs"
+		        end
+                take!(target_channels[i])
+		        put!(target_channels[i], new_target)
+            end
+        end
+    end
+end
+
+function totalshutdown(c)
+    while isready(c)
+        take!(c)
+    end
+    close(c)
 end
 
 function measure_vehicles(map,
@@ -351,26 +518,30 @@ function measure_vehicles(map,
     imu_channels = [Channel{IMUMeasurement}(32) for _ in 1:num_vehicles]
     cam_channels = [Channel{CameraMeasurement}(32) for _ in 1:num_vehicles]
     gt_channels = [Channel{GroundTruthMeasurement}(32) for _ in 1:num_vehicles]
+    target_channels = [Channel{Int}(1) for _ in 1:num_vehicles]
     
     shutdown = false
     @async while true
         if isready(shutdown_channel)
             shutdown = fetch(shutdown_channel)
             if shutdown
-                foreach(c->close(c), [gps_channels; imu_channels; cam_channels; gt_channels])
-                foreach(c->close(c), values(meas_channels))
-                foreach(c->close(c), values(state_channels))
+                foreach(c->totalshutdown(c), [gps_channels; imu_channels; cam_channels; gt_channels])
+                foreach(c->totalshutdown(c), values(meas_channels))
+                foreach(c->totalshutdown(c), values(state_channels))
+                foreach(c->totalshutdown(c), target_channels)
                 break
             end
         end
         sleep(0.1)
     end
     
-    target_channels = [Channel{Int}(1) for _ in 1:num_vehicles]
-    # Fixed target segments for now.
     for id in 1:num_vehicles
-        put!(target_channels[id], rand(target_segments))
+	target = rand(target_segments)
+	@info "Target for vehicle $id: $target"
+        put!(target_channels[id], target)
     end
+
+    @async update_targets(target_channels, state_channels, target_segments, map)
 
     # Centralized Measurements
     measure_gt && @async ground_truth(vehicles, state_channels, gt_channels)
