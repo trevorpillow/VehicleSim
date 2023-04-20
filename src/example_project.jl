@@ -137,6 +137,18 @@ function perception(cam_meas_channel, gt_channel, localization_state_channel, pe
     mus = []
     sigmas = []
 
+    gt = fetch(gt_channel)
+    println("gt stuff: id, orientation and position")
+
+    x_ego_o = gt.orientation
+    x_ego_p = gt.position
+    x_ego = [x_ego_o[1] x_ego_o[2] x_ego_o[3] x_ego_o[4] x_ego_p[1] x_ego_p[2] x_ego_p[3]]
+    println(x_ego)
+
+    delta_t = 0.004
+    current_cam_id = 1
+
+
     while true
         display("in while loop")
         """
@@ -159,16 +171,7 @@ function perception(cam_meas_channel, gt_channel, localization_state_channel, pe
             2. Run ekf
         """
         # NOTE: ONE EKF PER CAM PER VEHICLE SEEN
-        gt = fetch(gt_channel)
-        println("gt stuff: id, orientation and position")
-
-        x_ego_o = gt.orientation
-        x_ego_p = gt.position
-        x_ego = [x_ego_o[1] x_ego_o[2] x_ego_o[3] x_ego_o[4] x_ego_p[1] x_ego_p[2] x_ego_p[3]]
-        println(x_ego)
-
-        delta_t = 0.004
-        mu_k = zeros(7)
+        # mu_k = zeros(7)
 
         closest_bbox = [0.0 0.0 0.0 0.0]
         frame_size = 0
