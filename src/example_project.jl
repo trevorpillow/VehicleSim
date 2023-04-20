@@ -120,7 +120,7 @@ end
 
 function undo_convert_to_pixel(num_pixels, pixel_len, y)
     min_val = -pixel_len * num_pixels / 2
-    undo_pix = y * pixel_len + min_val
+    undo_pix = y * (pixel_len + min_val)
     return undo_pix
 end
 
@@ -220,6 +220,9 @@ function perception(cam_meas_channel, gt_channel, localization_state_channel, pe
                         y1_undo = undo_convert_to_pixel(image_height, pixel_len, y1)
                         y2_undo = undo_convert_to_pixel(image_width, pixel_len, y2)
 
+                        println("y1 and y2")
+                        println(y1)
+                        println(y2)
                         println("y1 and y2 undo's")
                         println(y1_undo)
                         println(y2_undo)
@@ -227,7 +230,7 @@ function perception(cam_meas_channel, gt_channel, localization_state_channel, pe
                         # now undo-pixel of y1 and y2
                         X1 = y1_undo / focal_len * d
                         X2 = y2_undo / focal_len * d
-                        println("value of X1::")
+                        println("value of X1 and X2::")
                         println(X1)
 
                         # now convert X1 and X2 into 
@@ -237,16 +240,17 @@ function perception(cam_meas_channel, gt_channel, localization_state_channel, pe
                         T_world_body = get_body_transform(x_ego[1:4], x_ego[5:7])
                         T_world_camrot = multiply_transforms(T_world_body, T_body_camrot)
 
-                        X1_t = T_world_camrot * [X1; 1]
-                        X2_t = T_world_camrot * [X2; 1]
+                        println(T_world_camrot)
+                        println([X1; X2; d; 1])
 
-                        println("X1 and X2 after convering to map frame")
-                        println(X1_t)
-                        println(X2_t)
+                        X_t = T_world_camrot * [X1; X2; d; 1]
+
+                        println("X after convering to map frame")
+                        println(X_t)
 
                         # add to the ego's p1 and p2 values appropriately
-                        x0[1] = X1_t
-                        x0[2] = X2_t
+                        x0[1] = X_t[1]
+                        x0[2] = X_t[2]
 
                         # println("UPDATED values of x0's p1 and p2")
                         # println(x0[1])
