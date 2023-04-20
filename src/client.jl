@@ -48,7 +48,7 @@ function keyboard_client(host::IPAddr=IPv4(0), port=4444; v_step = 1.0, s_step =
     cam_channel = Channel{CameraMeasurement}(32)
     gt_channel = Channel{GroundTruthMeasurement}(32)
     localization_state_channel = Channel{MyLocalizationType}(1)
-    put!(localization_state_channel, MyLocalizationType([0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0], 0.0)) # fills state channel with dummy value
+    put!(localization_state_channel, MyLocalizationType([0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0], 0.0, [0.0,0.0, 0.0])) # fills state channel with dummy value
 
     @async while isopen(socket)
         sleep(0.001)
@@ -80,6 +80,7 @@ function keyboard_client(host::IPAddr=IPv4(0), port=4444; v_step = 1.0, s_step =
     controlled = true
 
     @async localize(gps_channel, imu_channel, localization_state_channel, gt_channel)
+    # localize(gps_channel, imu_channel, localization_state_channel, gt_channel)
 
     @info "Press 'q' at any time to terminate vehicle."
     while controlled && isopen(socket)
@@ -118,12 +119,13 @@ function keyboard_client(host::IPAddr=IPv4(0), port=4444; v_step = 1.0, s_step =
             pos_est = state_est.position
             linear_est = state_est.linear_vel
             angular_est = state_est.angular_vel
+            forward = state_est.testval
         end
 
         gps_offset = Vector([1.0, 3.0, 2.64]) # What is the offset of the GPS relative to the center of the car?
         # offset gps forward 3, down 1, right 1
         # PROBLEM: IMU is always moving "forward" so this calculation is useless
-        forward = Vector(linear_est/norm(linear_est))
+        # forward = Vector(linear_est/norm(linear_est))
         # @info "vel"
         # @info linear_est
         # @info "forward:"
@@ -142,18 +144,18 @@ function keyboard_client(host::IPAddr=IPv4(0), port=4444; v_step = 1.0, s_step =
             gt_pos = gt_meas.position
             gt_linear_vel = gt_meas.velocity
         end
-        @info "Gt:"
-        @info gt_linear_vel
-        @info "untreated:"
-        @info linear_est
-        # @info "offset:"
-        # @info pos_est
-        @info ""
+        # @info "Gt:"
+        # @info gt_linear_vel
+        @info "forward:"
+        @info forward
+        @info "offset:"
+        @info gt_pos
+        # @info ""
         # @info "raw diff:"
         # @info gt_pos - raw_est
         # @info "offset diff:"
         # @info gt_pos - pos_est
-        # @info ""
+        @info ""
     end
 end
 
