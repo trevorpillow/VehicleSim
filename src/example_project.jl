@@ -340,20 +340,53 @@ end
 
 function decision_making(localization_state_channel,
     perception_state_channel,
-    map,
-    target_road_segment_id,
-    socket)
-    # do some setup
-    while true
-        latest_localization_state = fetch(localization_state_channel)
-        latest_perception_state = fetch(perception_state_channel)
+    map_segments,
+    target_id,
+    socket, gt_channel)
 
-        # figure out what to do ... setup motion planning problem etc
-        steering_angle = 0.0
-        target_vel = 0.0
-        cmd = VehicleCommand(steering_angle, target_vel, true)
-        serialize(socket, cmd)
-    end
+    # do some setup
+
+    # 1. Find current map segment
+    gt_meas = take!(gt_channel)
+    start_id = find_segment(gt_meas.position[1:2], map_segments)    
+
+    # 2. Find shortest path to target segment
+    path, path_index = a_star(map_segments, start_id, target_id)
+
+    # 3. 
+    sim(socket, gt_channel, map_segments, path, start_id, target_id)
+
+    # for n in 1:15
+    #     while isready(gt_channel)
+    #         meas = take!(gt_channel)
+    #         if meas.time > gt_meas.time
+    #             gt_meas = meas
+    #         end
+    #     end
+    #     #latest_localization_state = fetch(localization_state_channel)
+    #     #println(latest_localization_state)
+
+    #     #latest_perception_state = fetch(perception_state_channel)
+
+    #     #gt_meas = take!(gt_channel)
+    #     #print(gt_meas.time)
+    #     #print("   ")
+    #     #println(gt_meas.position[1:2])
+
+
+
+    #     # figure out what to do ... setup motion planning problem etc
+    #     steering_angle = 0.0
+    #     target_vel = 0.0
+    #     if n > 5
+    #         target_vel = 5.0
+    #     end
+    #     if n > 10
+    #         target_vel = 0.0
+    #     end
+    #     cmd = VehicleCommand(steering_angle, target_vel, true)
+    #     serialize(socket, cmd)
+    # end
 end
 
 function isfull(ch::Channel)
@@ -377,10 +410,11 @@ function my_client(host::IPAddr=IPv4(0), port=4444)
     localization_state_channel = Channel{MyLocalizationType}(1)
     perception_state_channel = Channel{MyPerceptionType}(1)
 
-    target_map_segment = 0 # (not a valid segment, will be overwritten by message)
-    ego_vehicle_id = 0 # (not a valid id, will be overwritten by message. This is used for discerning ground-truth messages)
+    valid_ids = Condition()
+    target_id = 0 # (not a valid segment, will be overwritten by message)
+    ego_id = 0 # (not a valid id, will be overwritten by message. This is used for discerning ground-truth messages)
 
-    errormonitor(@async while true
+    errormonitor(@async while isopen(socket)
         # This while loop reads to the end of the socket stream (makes sure you
         # are looking at the latest messages)
         sleep(0.001)
@@ -396,12 +430,11 @@ function my_client(host::IPAddr=IPv4(0), port=4444)
             end
         end
         !received && continue
-        target_map_segment = measurement_msg.target_segment
-        # display("target_map_segment")
-        # display(target_map_segment)
-        ego_vehicle_id = measurement_msg.vehicle_id
-        # display("ego_vehicle_id")
-        # display(ego_vehicle_id)
+        target_id = measurement_msg.target_segment
+        ego_id = measurement_msg.vehicle_id
+        # notify(valid_ids)
+        num_gt = 0
+
         for meas in measurement_msg.measurements
             # display("meas")
             # display(meas)
@@ -418,18 +451,23 @@ function my_client(host::IPAddr=IPv4(0), port=4444)
                 # display(meas)
                 !isfull(cam_channel) && put!(cam_channel, meas)
             elseif meas isa GroundTruthMeasurement
-                # display("Ground truth meas")
-                # display(meas)
-                # println()
+                num_gt += 1
+                # @info(num_gt)
+
                 !isfull(gt_channel) && put!(gt_channel, meas)
             end
         end
     end)
+    
+    # wait(valid_ids)
+    sleep(2)
 
-    @async localize(gps_channel, imu_channel, localization_state_channel, gt_channel) #FIXME: Remove gt channel once ready
+    # @async 
+    # @async localize(gps_channel, imu_channel, localization_state_channel, gt_channel) #FIXME: Remove gt channel once ready
     # @async perception(cam_channel, localization_state_channel, perception_state_channel)
-    @async perception(cam_channel, gt_channel, localization_state_channel, perception_state_channel)
+    t = @async decision_making(localization_state_channel, perception_state_channel, map_segments, target_id, socket, gt_channel)
+    errormonitor(t)
+    return t
 
-    # @async decision_making(localization_state_channel, perception_state_channel, map, socket)
     # @async test_algorithms(gt_channel, localization_state_channel, perception_state_channel, ego_vehicle_id)
 end
