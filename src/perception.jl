@@ -50,12 +50,6 @@ function convert_to_pixel_unrounded(num_pixels, pixel_len, px)
     return pix_id
 end
 
-function convert_to_pixel_unrounded(num_pixels, pixel_len, px)
-    min_val = -pixel_len * num_pixels / 2
-    pix_id = (px - min_val) / pixel_len
-    return pix_id
-end
-
 
 """
     Usage:
