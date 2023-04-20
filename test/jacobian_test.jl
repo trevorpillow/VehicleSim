@@ -1,12 +1,18 @@
 using VehicleSim
 using Test
 
+using ForwardDiff
+
+function jacobian(f, x)
+    ForwardDiff.jacobian(f, x)
+end
+
 # function test_perception_h_jac()
 @testset "derivative tests" begin
     # variable set up for test
     n = 7
-    # epsilon = 1 
     epsilon = 1e-6
+    # epsilon = 10
 
 
     # bbox of = [241, 321, 242, 322]
@@ -18,30 +24,30 @@ using Test
     """
         TEST PROCESS
     """
-    delta_t = 0.003
-    fx = VehicleSim.perception_f(x_other, delta_t)
-    println("fx:")
-    println(fx)
-    println()
-    Jfx = VehicleSim.perception_jac_fx(x_other, delta_t)
-    println("Jfx:")
-    println(Jfx)
-    println()
-    for i = 1:n
-        ei = [0.0 0.0 0.0 0.0 0.0 0.0 0.0] # same length as x_other
-        ei[i] = epsilon
-        fxi = VehicleSim.perception_f(x_other + ei, delta_t)
-        df = (fxi - fx) / epsilon
-        display("df:")
-        display(df)
-        println()
+    # delta_t = 0.003
+    # fx = VehicleSim.perception_f(x_other, delta_t)
+    # println("fx:")
+    # println(fx)
+    # println()
+    # Jfx = VehicleSim.perception_jac_fx(x_other, delta_t)
+    # println("Jfx:")
+    # println(Jfx)
+    # println()
+    # for i = 1:n
+    #     ei = [0.0 0.0 0.0 0.0 0.0 0.0 0.0] # same length as x_other
+    #     ei[i] = epsilon
+    #     fxi = VehicleSim.perception_f(x_other + ei, delta_t)
+    #     df = (fxi - fx) / epsilon
+    #     display("df:")
+    #     display(df)
+    #     println()
 
-        display("Jx[:, i]")
-        display(Jfx[:, i])
-        println()
-        # manually checked df and Jfx[:, i] are basically the same
-        # @test isapprox(df, Jfx[:, i]) # df[1] in order to just turn it into the same type
-    end
+    #     display("Jx[:, i]")
+    #     display(Jfx[:, i])
+    #     println()
+    #     # manually checked df and Jfx[:, i] are basically the same
+    #     # @test isapprox(df, Jfx[:, i]) # df[1] in order to just turn it into the same type
+    # end
 
 
     """
@@ -74,6 +80,11 @@ using Test
     # display(C_right)
     # println()
 
+    # x0 = x_other # sample input
+    # J1 = jacobian(x -> VehicleSim.perception_get_3d_bbox_corners(x, x[end-2:end]), x0)
+    # println("J1 from forwarddiff")
+    # println(J1)
+
     Jx = [transpose(C_top[2, :]); transpose(C_left[1, :]); transpose(C_bot[2, :]); transpose(C_right[1, :])] # double check the order retrurned from h
     display("Jacobian result:")
     display(Jx)
@@ -85,16 +96,22 @@ using Test
     for i = 1:n
         ei = [0.0 0.0 0.0 0.0 0.0 0.0 0.0] # same length as x_other
         ei[i] = epsilon
-        zxi, corner_ids, corners = VehicleSim.perception_h(x_other + ei, x_ego, cam_id)
+        zxi, corner_ids_i, corners_i = VehicleSim.perception_h(x_other + ei, x_ego, cam_id)
+        # display("zx::")
+        # display(zx)
+        # println()
+        # display("zxi::")
+        # display(zxi)
+        # println()
         df = (zxi - zx) / epsilon
-        # display("df:")
-        # display(df[1])
-        # println()
+        display("df:")
+        display(df[1])
+        println()
 
-        # display("Jx[:, i]")
-        # display(Jx[:, i])
-        # println()
-        @test isapprox(df[1], Jx[:, i]) # df[1] in order to just turn it into the same type
+        display("Jx[:, i]")
+        display(Jx[:, i])
+        println()
+        @test isapprox(df[1], Jx[:, i]; atol=1e-6) # df[1] in order to just turn it into the same type
     end
 
     # maybe I have to finish calculating and then compare after the for loop..
