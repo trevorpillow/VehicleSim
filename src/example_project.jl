@@ -178,10 +178,10 @@ function decision_making(localization_state_channel,
     start_id = find_segment(gt_meas.position[1:2], map_segments)    
 
     # 2. Find shortest path to target segment
-    path = a_star(map_segments, start_id, target_id)
+    path, path_index = a_star(map_segments, start_id, target_id)
 
     # 3. 
-    sim(socket, gt_channel, map_segments, path)
+    sim(socket, gt_channel, map_segments, path_index, start_id, target_id)
 
     # for n in 1:15
     #     while isready(gt_channel)
@@ -274,7 +274,7 @@ function my_client(host::IPAddr=IPv4(0), port=4444)
     end)
     
     # wait(valid_ids)
-    sleep(10)
+    sleep(2)
 
     # @async 
     #@async localize(gps_channel, imu_channel, localization_state_channel, gt_channel) #FIXME: Remove gt channel once ready

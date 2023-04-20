@@ -41,7 +41,7 @@ function server(max_vehicles=1,
         measure_gt=true)
     host = getipaddr()
     map = training_map()
-    server_visualizer = get_vis(map, true, host)
+    server_visualizer = get_vis(map, false, host)
     @info "Server can be connected to at $host and port $port"
     @info inform_hostport(server_visualizer, "Server visualizer")
     client_visualizers = [get_vis(map, false, host) for _ in 1:max_vehicles]

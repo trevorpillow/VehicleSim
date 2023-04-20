@@ -165,14 +165,20 @@ end
 
 function construct_path(ancestors, start_id, target_id)
     path = Dict{Int, Int}()
-    path[target_id] = 0
+    path_index = OrderedDict{Int, Int}()
+    index = 1
+
+    path[target_id] = 0 # no valid child on path
+    path_index[target_id] = index
 
     current_id = target_id
     while current_id != start_id
         child_id = current_id
         current_id = ancestors[child_id]
+        index += 1
         path[current_id] = child_id
+        path_index[current_id] = index
     end
 
-    path
+    path, path_index
 end
