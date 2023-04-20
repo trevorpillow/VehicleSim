@@ -19,9 +19,7 @@ using DifferentialEquations
 using DataStructures
 using Ipopt
 using Symbolics
-using GLMakie #
-using ProgressMeter #
-using GLMakie.GeometryBasics #
+using ProgressMeter
 
 include("view_car.jl")
 include("objects.jl")
@@ -36,6 +34,7 @@ include("example_project.jl")
 include("path_finding.jl")
 include("decision_making.jl")
 include("trajectory.jl")
+include("localization.jl")
 
 export server, shutdown!, keyboard_client, my_client
 
