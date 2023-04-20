@@ -151,7 +151,9 @@ function Jac_x_f(x, Δt)
     vₙ = x[5:7]
 
     s = sₙ*sᵣ - vₙ'*vᵣ
+
     v = sₙ*vᵣ+sᵣ*vₙ+cross(vₙ, vᵣ)
+
 
     R = Rot_from_quat([sₙ; vₙ])  
     (J_R_q1, J_R_q2, J_R_q3, J_R_q4) = J_R_q([sₙ; vₙ])
