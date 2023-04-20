@@ -1,103 +1,185 @@
-function sim(socket, gt_channel, map_segments, path_index, start_id, target_id;
+function sim(socket, gt_channel, map_segments, path, start_id, target_id;
         rng = MersenneTwister(420),
         sim_steps = 100,
-        timestep = 0.2,
+        timestep = 0.1,
         trajectory_length = 10,
         R = Diagonal([0.1, 0.5]))
-
-    id_channel = Channel{Int}(trajectory_length)
-
+    
     # TODO Setup callbacks appropriately
-    callbacks = callback_generator(map_segments, path_index, id_channel, start_id, trajectory_length, timestep, R)
+    callbacks = callback_generator(trajectory_length, timestep, R)
 
+    wait(gt_channel)
     if isready(gt_channel)
         gt_meas = fetch(gt_channel)
-    else
-        wait(gt_channel)
-        gt_meas = fetch(gt_channel)
+    # else
+    #     wait(gt_channel)
+    #     gt_meas = fetch(gt_channel)
     end
+    ego_state = [gt_meas.position[1:2]; gt_meas.velocity[1]; gt_meas.angular_velocity[1]]
 
+    segment_id = start_id
+    child_id = path[segment_id]
+
+    segs = [;]
+    for k in 1:trajectory_length
+        push!(segs, start_id)
+    end
+    
     # cmd = VehicleCommand(0.0, 10.0, true)
     # serialize(socket, cmd)
+    stale = 0
+    # @showprogress 
+    while true
+        # if stale >= 5
+        #     wait(gt_channel)
+        # end
+        # received = false
+        # if isready(gt_channel)
+        #     # stale = 0
+        #     while isready(gt_channel)
+        #         meas = take!(gt_channel)
+        #         if meas.time > gt_meas.time
+        #             gt_meas = meas
+        #             received = true
+        #             @info("GOT MEAS")
+        #         end
+        #     end
+        # else
+        #     stale += 1
+        # end
 
-    for k in 1:trajectory_length
-        put!(id_channel, start_id)
-    end
-
-    @showprogress for t in 1:2 #:sim_steps
+        wait(gt_channel)
         while isready(gt_channel)
             meas = take!(gt_channel)
             if meas.time > gt_meas.time
                 gt_meas = meas
+                # @info("GOT MEAS")
             end
         end
 
-        ego = (; state=[gt_meas.position[1:2]; gt_meas.velocity[1]; gt_meas.angular_velocity[1]], S=0)
+        
+        # if received
+        ego_state = [gt_meas.position[1:2]; gt_meas.velocity[1]; gt_meas.angular_velocity[1]]
+        # end
 
-        a_left = [;]
-        b_left = [;]
-        a_right = [;]
-        b_right = [;]
-        center = [;]
-        r_inside = [;]
-        r_outside = [;]
-        for (key, index) in path_index
-            @info(index)
-            h_left = halfspace(map_segments[key].lane_boundaries[1].pt_a, map_segments[key].lane_boundaries[1].pt_b)
-            h_right = halfspace(map_segments[key].lane_boundaries[2].pt_b, map_segments[key].lane_boundaries[2].pt_a)
-            push!(a_left, h_left.a)
-            push!(b_left, h_left.b)
-            push!(a_right, h_right.a)
-            push!(b_right, h_right.b)
-
-            push!(center, center_of_curve(map_segments[key]))
-            inside_radius, outside_radius = radii(map_segments[key])
-            push!(r_inside, inside_radius)
-            push!(r_outside, outside_radius)
+        new_id = find_segment(ego_state[1:2], map_segments, keys(path))
+        if new_id == child_id
+            segment_id = new_id
+            child_id = path[segment_id]
         end
 
-        @info(ego.state)
-        @info(a_left)
-        @info(b_left)
-        @info(a_right)
-        @info(b_right)
-        @info(center)
-        @info(r_inside)
-        @info(r_outside)
+        segment = map_segments[segment_id]
 
-        trajectory = generate_trajectory(ego.state, 0, a_left, b_left, a_right, b_right, center, r_inside, r_outside, callbacks, trajectory_length)
+        if isapprox(segment.lane_boundaries[1].curvature, 0.0, atol=1e-6)
+            straight = 1.0
+            turn = 0.0
+        else
+            straight = 0.0
+            turn = 1.0
+        end
+
+        h_left = halfspace(segment.lane_boundaries[1].pt_a, segment.lane_boundaries[1].pt_b)
+        h_right = halfspace(segment.lane_boundaries[2].pt_a, segment.lane_boundaries[2].pt_b)
+        center = center_of_curve(segment)
+        r_inside, r_outside = radii(segment)
+
+        # s = [;]
+        # t = [;]
+        # a1 = [;]
+        # b1 = [;]
+        # a2 = [;]
+        # b2 = [;]
+        # c = [;]
+        # ri = [;]
+        # ro = [;]
+
+        # for k in 1:trajectory_length
+        #     segment = map_segments[segs[k]]
+
+        #     if isapprox(segment.lane_boundaries[1].curvature, 0.0, atol=1e-6)
+        #         straight = 1.0
+        #         turn = 0.0
+        #     else
+        #         straight = 0.0
+        #         turn = 1.0
+        #     end
+
+        #     h_left = halfspace(segment.lane_boundaries[1].pt_a, segment.lane_boundaries[1].pt_b)
+        #     h_right = halfspace(segment.lane_boundaries[2].pt_a, segment.lane_boundaries[2].pt_b)
+        #     center = center_of_curve(segment)
+        #     r_inside, r_outside = radii(segment)
+
+        #     push!(s, straight)
+        #     push!(t, turn)
+        #     push!(a1, h_left.a)
+        #     push!(b1, h_left.b)
+        #     push!(a2, h_right.a)
+        #     push!(b2, h_right.b)
+        #     push!(c, center)
+        #     push!(ri, r_inside)
+        #     push!(ro, r_outside)
+        # end
+            
+
+        # @info("")
+        # @info("----------------")
+        # @info(segment_id)
+        # @info(ego_state[1:2])
+        
+
+        # @info(ego.state)
+        # @info(straight)
+        # @info(turn)
+        # @info(h_left)
+        # @info(h_right)
+        # @info(center)
+        # @info(r_inside)
+        # @info(r_outside)
+
+        trajectory = generate_trajectory(ego_state, straight, turn, h_left.a, h_left.b, h_right.a, h_right.b, center, r_inside, r_outside, callbacks, trajectory_length)
+        # trajectory = generate_trajectory(ego_state, s, t, a1, b1, a2, b2, c, ri, ro, callbacks, trajectory_length)
         # @info(trajectory.controls[1])
-        velocity, steering_angle = update_controls(ego.state, trajectory.controls[1], timestep)
+        @info(trajectory.controls[1])
 
-        for k in 1:trajectory_length
-            put!(id_channel, find_segment(trajectory.states[k][1:2], map_segments, keys(path_index)))
-        end
+        velocity, steering_angle = update_controls(ego_state, trajectory.controls[1], timestep)
+
+        @info(steering_angle)
 
         cmd = VehicleCommand(steering_angle, velocity, true)
         serialize(socket, cmd)
+
+        ego_state = trajectory.states[1]
+
+        for k in 1:trajectory_length
+            if find_segment(trajectory.states[k][1:2], map_segments, keys(path)) == child_id
+                segs[k] = child_id
+            else
+                segs[k] = segment_id
+            end
+        end
     end
 
     #cmd = VehicleCommand(0.0, 0.0, false)
     #serialize(socket, cmd)
 end
 
-function generate_trajectory(X¹, s, aₗ, bₗ, aᵣ, bᵣ, c, rᵢ, rₒ, callbacks, trajectory_length)
+function generate_trajectory(X¹, s, t, aₗ, bₗ, aᵣ, bᵣ, c, rᵢ, rₒ, callbacks, trajectory_length)
 
     wrapper_f = function(Z)
-        callbacks.full_cost_fn(Z, X¹, s, aₗ, bₗ, aᵣ, bᵣ, c, rᵢ, rₒ)
+        callbacks.full_cost_fn(X¹, s, t, aₗ, bₗ, aᵣ, bᵣ, c, rᵢ, rₒ, Z)
     end
     wrapper_grad_f = function(Z, grad)
-        callbacks.full_cost_grad_fn(grad, Z, X¹, s, aₗ, bₗ, aᵣ, bᵣ, c, rᵢ, rₒ)
+        callbacks.full_cost_grad_fn(grad, X¹, s, t, aₗ, bₗ, aᵣ, bᵣ, c, rᵢ, rₒ, Z)
     end
     wrapper_con = function(Z, con)
-        callbacks.full_constraint_fn(con, Z, X¹, s, aₗ, bₗ, aᵣ, bᵣ, c, rᵢ, rₒ)
+        callbacks.full_constraint_fn(con, X¹, s, t, aₗ, bₗ, aᵣ, bᵣ, c, rᵢ, rₒ, Z)
     end
     wrapper_con_jac = function(Z, rows, cols, vals)
         if isnothing(vals)
             rows .= callbacks.full_constraint_jac_triplet.jac_rows
             cols .= callbacks.full_constraint_jac_triplet.jac_cols
         else
-            callbacks.full_constraint_jac_triplet.full_constraint_jac_vals_fn(vals, Z, X¹, s, aₗ, bₗ, aᵣ, bᵣ, c, rᵢ, rₒ)
+            callbacks.full_constraint_jac_triplet.full_constraint_jac_vals_fn(vals, X¹, s, t, aₗ, bₗ, aᵣ, bᵣ, c, rᵢ, rₒ, Z)
         end
         nothing
     end
@@ -106,7 +188,7 @@ function generate_trajectory(X¹, s, aₗ, bₗ, aᵣ, bᵣ, c, rᵢ, rₒ, call
             rows .= callbacks.full_lag_hess_triplet.hess_rows
             cols .= callbacks.full_lag_hess_triplet.hess_cols
         else
-            callbacks.full_lag_hess_triplet.full_hess_vals_fn(vals, Z, X¹, s, aₗ, bₗ, aᵣ, bᵣ, c, rᵢ, rₒ, λ, cost_scaling)
+            callbacks.full_lag_hess_triplet.full_hess_vals_fn(vals, X¹, s, t, aₗ, bₗ, aᵣ, bᵣ, c, rᵢ, rₒ, Z, λ, cost_scaling)
         end
         nothing
     end

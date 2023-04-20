@@ -1,15 +1,17 @@
-function callback_generator(map_segments, path_index, id_channel, start_id, trajectory_length, timestep, R)
+function callback_generator(trajectory_length, timestep, R)
     # Define symbolic variables for all inputs, as well as trajectory
     # X¹, X², X³, S¹, S², S³, s, aₗ, bₗ, aᵣ, bᵣ, c, rᵢ, rₒ = let
     #     @variables(X¹[1:4], s[1:4], c[1:4], r[1:4], a[1:8], b[1:4], Z[1:6*trajectory_length]) .|> Symbolics.scalarize
     # end
-    p_len = length(path_index)
-    segment_id = start_id
 
-    X¹, s, aₗ, bₗ, aᵣ, bᵣ, c, rᵢ, rₒ, Z = let
-        @variables(X¹[1:4], s[1:trajectory_length], aₗ[1:2*p_len], bₗ[1:p_len], aᵣ[1:2*p_len], bᵣ[1:p_len], c[1:2*p_len], rᵢ[1:p_len], rₒ[1:p_len], Z[1:6*trajectory_length]) .|> Symbolics.scalarize
+    # X¹, s, t, aₗ, bₗ, aᵣ, bᵣ, c, rᵢ, rₒ, Z = let
+    #     @variables(X¹[1:4], s[1:trajectory_length], t[1:trajectory_length], aₗ[1:2*trajectory_length], bₗ[1:trajectory_length], aᵣ[1:2*trajectory_length], bᵣ[1:trajectory_length], c[1:2*trajectory_length], rᵢ[1:trajectory_length], rₒ[1:trajectory_length], Z[1:6*trajectory_length]) .|> Symbolics.scalarize
+    # end
+
+    X¹, s, t, aₗ, bₗ, aᵣ, bᵣ, c, rᵢ, rₒ, Z = let
+        @variables(X¹[1:4], s, t, aₗ[1:2], bₗ, aᵣ[1:2], bᵣ, c[1:2], rᵢ, rₒ, Z[1:6*trajectory_length]) .|> Symbolics.scalarize
     end
-   
+
     states, controls = decompose_trajectory(Z)
     all_states = [[X¹,]; states]
 
@@ -17,10 +19,9 @@ function callback_generator(map_segments, path_index, id_channel, start_id, traj
     cost_grad = Symbolics.gradient(cost_val, Z)
 
     constraints_val = Symbolics.Num[]
-    # constraints_val = Float64[]
     constraints_lb = Float64[]
     constraints_ub = Float64[]
-    for k in 1:trajectory_length
+    for k = 1:trajectory_length
         # if isready(id_channel)
         #     segment_id = take!(id_channel)
         # end
@@ -31,25 +32,38 @@ function callback_generator(map_segments, path_index, id_channel, start_id, traj
         append!(constraints_lb, zeros(4))
         append!(constraints_ub, zeros(4))
 
+        # append!(constraints_val, lane_constraint(states[k], s[k], t[k], aₗ[(k-1)*2+1:2*k], bₗ[k], c[(k-1)*2+1:2*k], rᵢ[k]))
+        # append!(constraints_val, lane_constraint(states[k], s[k], t[k], aᵣ[(k-1)*2+1:2*k], bᵣ[k], c[(k-1)*2+1:2*k], rₒ[k]))
+        append!(constraints_val, lane_constraint(states[k], s, t, aₗ, bₗ, c, rᵢ))
+        append!(constraints_val, lane_constraint(states[k], s, t, aᵣ, bᵣ, c, rₒ))
+        append!(constraints_lb, [0.0; -Inf])
+        append!(constraints_ub, [Inf; 0.0])
+
+        append!(constraints_val, states[k][3])
+        append!(constraints_lb, 0.0)
+        append!(constraints_ub, 8.0)
+
+        append!(constraints_val, states[k][4] - X¹[4])
+        append!(constraints_lb, -pi/2)
+        append!(constraints_ub, pi/2)
+
         # calculate segment
         # segment_id = find_segment(states[k][1:2], map_segments, keys(path_index))
         # segment_index = path_index[current_segment]
 
-        if isapprox(map_segments[segment_id].lane_boundaries[1].curvature, 0.0, atol=1e-6)
-            append!(constraints_val, straight_lane_constraint(states[k], aₗ[(segment_index - 1) * 2 + 1:segment_index * 2], bₗ[segment_index]))
-            append!(constraints_val, straight_lane_constraint(states[k], aᵣ[(segment_index - 1) * 2 + 1:segment_index * 2], bᵣ[segment_index]))
-            append!(constraints_lb, [0.0; 0.0])
-            append!(constraints_ub, [Inf; Inf])
-        else
-            append!(constraints_val, turn_lane_constraint(states[k], c[(segment_index - 1) * 2 + 1:segment_index * 2], rᵢ[segment_index]))
-            append!(constraints_val, turn_lane_constraint(states[k], c[(segment_index - 1) * 2 + 1:segment_index * 2], rₒ[segment_index]))
-            append!(constraints_lb, [0.0; -Inf])
-            append!(constraints_ub, [Inf; 0.0])
-        end
+        # if isapprox(map_segments[segment_id].lane_boundaries[1].curvature, 0.0, atol=1e-6)
+        #     append!(constraints_val, straight_lane_constraint(states[k], aₗ[(segment_index - 1) * 2 + 1:segment_index * 2], bₗ[segment_index]))
+        #     append!(constraints_val, straight_lane_constraint(states[k], aᵣ[(segment_index - 1) * 2 + 1:segment_index * 2], bᵣ[segment_index]))
+        #     append!(constraints_lb, [0.0; 0.0])
+        #     append!(constraints_ub, [Inf; Inf])
+        # else
+        #     append!(constraints_val, turn_lane_constraint(states[k], c[(segment_index - 1) * 2 + 1:segment_index * 2], rᵢ[segment_index]))
+        #     append!(constraints_val, turn_lane_constraint(states[k], c[(segment_index - 1) * 2 + 1:segment_index * 2], rₒ[segment_index]))
+        #     append!(constraints_lb, [0.0; -Inf])
+        #     append!(constraints_ub, [Inf; 0.0])
+        # end
         
-        append!(constraints_val, states[k][3])
-        append!(constraints_lb, 5.0)
-        append!(constraints_ub, 10.0)
+        
 
         # append!(constraints_val, lane_constraint(states[k], c[1:2], r[1]) + s[2])
         # append!(constraints_val, lane_constraint(states[k], c[1:2], r[2]) - s[2])
@@ -84,28 +98,28 @@ function callback_generator(map_segments, path_index, id_channel, start_id, traj
     expression = Val{false}
 
     full_cost_fn = let
-        cost_fn = Symbolics.build_function(cost_val, [X¹; s; aₗ; bₗ; aᵣ; bᵣ; c; rᵢ; rₒ; Z]; expression)
-        (X¹, s, aₗ, bₗ, aᵣ, bᵣ, c, rᵢ, rₒ, Z) -> cost_fn([X¹; s; aₗ; bₗ; aᵣ; bᵣ; c; rᵢ; rₒ; Z])
+        cost_fn = Symbolics.build_function(cost_val, [X¹; s; t; aₗ; bₗ; aᵣ; bᵣ; c; rᵢ; rₒ; Z]; expression)
+        (X¹, s, t, aₗ, bₗ, aᵣ, bᵣ, c, rᵢ, rₒ, Z) -> cost_fn([X¹; s; t; aₗ; bₗ; aᵣ; bᵣ; c; rᵢ; rₒ; Z])
     end
 
     full_cost_grad_fn = let
-        cost_grad_fn! = Symbolics.build_function(cost_grad, [X¹; s; aₗ; bₗ; aᵣ; bᵣ; c; rᵢ; rₒ; Z]; expression)[2]
-        (grad, X¹, s, aₗ, bₗ, aᵣ, bᵣ, c, rᵢ, rₒ, Z) -> cost_grad_fn!(grad, [X¹; s; aₗ; bₗ; aᵣ; bᵣ; c; rᵢ; rₒ; Z])
+        cost_grad_fn! = Symbolics.build_function(cost_grad, [X¹; s; t; aₗ; bₗ; aᵣ; bᵣ; c; rᵢ; rₒ; Z]; expression)[2]
+        (grad, X¹, s, t, aₗ, bₗ, aᵣ, bᵣ, c, rᵢ, rₒ, Z) -> cost_grad_fn!(grad, [X¹; s; t; aₗ; bₗ; aᵣ; bᵣ; c; rᵢ; rₒ; Z])
     end
 
     full_constraint_fn = let
-        constraint_fn! = Symbolics.build_function(constraints_val, [X¹; s; aₗ; bₗ; aᵣ; bᵣ; c; rᵢ; rₒ; Z]; expression)[2]
-        (cons, X¹, s, aₗ, bₗ, aᵣ, bᵣ, c, rᵢ, rₒ, Z) -> constraint_fn!(cons, [X¹; s; aₗ; bₗ; aᵣ; bᵣ; c; rᵢ; rₒ; Z])
+        constraint_fn! = Symbolics.build_function(constraints_val, [X¹; s; t; aₗ; bₗ; aᵣ; bᵣ; c; rᵢ; rₒ; Z]; expression)[2]
+        (cons, X¹, s, t, aₗ, bₗ, aᵣ, bᵣ, c, rᵢ, rₒ, Z) -> constraint_fn!(cons, [X¹; s; t; aₗ; bₗ; aᵣ; bᵣ; c; rᵢ; rₒ; Z])
     end
 
     full_constraint_jac_vals_fn = let
-        constraint_jac_vals_fn! = Symbolics.build_function(jac_vals, [X¹; s; aₗ; bₗ; aᵣ; bᵣ; c; rᵢ; rₒ; Z]; expression)[2]
-        (vals, X¹, s, aₗ, bₗ, aᵣ, bᵣ, c, rᵢ, rₒ, Z) -> constraint_jac_vals_fn!(vals, [X¹; s; aₗ; bₗ; aᵣ; bᵣ; c; rᵢ; rₒ; Z])
+        constraint_jac_vals_fn! = Symbolics.build_function(jac_vals, [X¹; s; t; aₗ; bₗ; aᵣ; bᵣ; c; rᵢ; rₒ; Z]; expression)[2]
+        (vals, X¹, s, t, aₗ, bₗ, aᵣ, bᵣ, c, rᵢ, rₒ, Z) -> constraint_jac_vals_fn!(vals, [X¹; s; t; aₗ; bₗ; aᵣ; bᵣ; c; rᵢ; rₒ; Z])
     end
     
     full_hess_vals_fn = let
-        hess_vals_fn! = Symbolics.build_function(hess_vals, [X¹; s; aₗ; bₗ; aᵣ; bᵣ; c; rᵢ; rₒ; Z; λ; cost_scaling]; expression)[2]
-        (vals, X¹, s, aₗ, bₗ, aᵣ, bᵣ, c, rᵢ, rₒ, Z, λ, cost_scaling) -> hess_vals_fn!(vals, [X¹; s; aₗ; bₗ; aᵣ; bᵣ; c; rᵢ; rₒ; Z; λ; cost_scaling])
+        hess_vals_fn! = Symbolics.build_function(hess_vals, [X¹; s; t; aₗ; bₗ; aᵣ; bᵣ; c; rᵢ; rₒ; Z; λ; cost_scaling]; expression)[2]
+        (vals, X¹, s, t, aₗ, bₗ, aᵣ, bᵣ, c, rᵢ, rₒ, Z, λ, cost_scaling) -> hess_vals_fn!(vals, [X¹; s; t; aₗ; bₗ; aᵣ; bᵣ; c; rᵢ; rₒ; Z; λ; cost_scaling])
     end
 
     full_constraint_jac_triplet = (; jac_rows, jac_cols, full_constraint_jac_vals_fn)
@@ -150,6 +164,10 @@ function update_controls(X, U, Δ)
     v = X[3] + U[1] * Δ
     ω = X[4] + U[2] * Δ
     v, ω
+end
+
+function lane_constraint(X, s, t, a, b, c, r)
+    s * straight_lane_constraint(X, a, b) + t * turn_lane_constraint(X, c, r)
 end
 
 function straight_lane_constraint(X, a, b)

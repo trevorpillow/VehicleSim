@@ -181,7 +181,7 @@ function decision_making(localization_state_channel,
     path, path_index = a_star(map_segments, start_id, target_id)
 
     # 3. 
-    sim(socket, gt_channel, map_segments, path_index, start_id, target_id)
+    sim(socket, gt_channel, map_segments, path, start_id, target_id)
 
     # for n in 1:15
     #     while isready(gt_channel)
@@ -260,6 +260,7 @@ function my_client(host::IPAddr=IPv4(0), port=4444)
         target_id = measurement_msg.target_segment
         ego_id = measurement_msg.vehicle_id
         # notify(valid_ids)
+        num_gt = 0
         for meas in measurement_msg.measurements
             if meas isa GPSMeasurement
                 !isfull(gps_channel) && put!(gps_channel, meas)
@@ -268,6 +269,8 @@ function my_client(host::IPAddr=IPv4(0), port=4444)
             elseif meas isa CameraMeasurement
                 !isfull(cam_channel) && put!(cam_channel, meas)
             elseif meas isa GroundTruthMeasurement
+                num_gt += 1
+                # @info(num_gt)
                 !isfull(gt_channel) && put!(gt_channel, meas)
             end
         end
@@ -279,6 +282,8 @@ function my_client(host::IPAddr=IPv4(0), port=4444)
     # @async 
     #@async localize(gps_channel, imu_channel, localization_state_channel, gt_channel) #FIXME: Remove gt channel once ready
     # @async perception(cam_channel, localization_state_channel, perception_state_channel)
-    errormonitor(@async decision_making(localization_state_channel, perception_state_channel, map_segments, target_id, socket, gt_channel))
+    t = @async decision_making(localization_state_channel, perception_state_channel, map_segments, target_id, socket, gt_channel)
+    errormonitor(t)
+    return t
     # @async test_algorithms(gt_channel, localization_state_channel, perception_state_channel, ego_vehicle_id)
 end
