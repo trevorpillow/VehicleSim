@@ -120,7 +120,7 @@ end
 
 function perception(cam_meas_channel, gt_channel, localization_state_channel, perception_state_channel)
     # set up stuff
-    x0 = [-88, 0, 0.01, 0.01, 13.2, 5.7, 5.3]
+    x0 = [-88, 0, 0.01, 0.01, 13.2, 5.7, 5.3] # EKF depends too heavily on x0
     # image_ratio_width = 640 / 50 # change '40' to something like bbox width or shutdown
     # image_ratio_height = 480 / (2 * bbox[]) # same as above
     # p1_offset = 10 * image_ratio_width
@@ -133,7 +133,6 @@ function perception(cam_meas_channel, gt_channel, localization_state_channel, pe
     # println("x0::")
     # println(x0)
     # x0 = [-91.6639496981265, -5.001254676640403, 0.01, 0.01, 13.2, 5.7, 5.3]
-
     mus = []
     sigmas = []
 
@@ -145,9 +144,9 @@ function perception(cam_meas_channel, gt_channel, localization_state_channel, pe
     x_ego = [x_ego_o[1] x_ego_o[2] x_ego_o[3] x_ego_o[4] x_ego_p[1] x_ego_p[2] x_ego_p[3]]
     println(x_ego)
 
+    x0 = [x_ego_p[1] + 10, x_ego_p[2] + 10, 0.01, 0.01, 13.2, 5.7, 5.3]
     delta_t = 0.004
     current_cam_id = 1
-
 
     while true
         display("in while loop")
