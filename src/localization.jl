@@ -1,57 +1,4 @@
-# function localize(gps_channel, imu_channel, localization_state_channel)
-#     # Set up algorithm / initialize variables
-#     @info "Wrong localize!"
-#     gps_estimates = []
-#     imu_estimates = []
-#     sqrt_meas_cov = Diagonal([1.0, 1.0])
-
-#     fresh_gps_meas = []
-#     while isready(gps_channel)
-#         meas = take!(gps_channel)
-#         push!(fresh_gps_meas, meas)
-#     end
-#     fresh_imu_meas = []
-#     while isready(imu_channel)
-#         meas = take!(imu_channel)
-#         push!(fresh_imu_meas, meas)
-#     end
-
-#     if (gps_estimates.isempty())
-#         gps_estimates.push!(fresh_gps_meas[0])
-#     end
-
-#     if (imu_estimates.isempty())
-#         imu_estimates.push!(fresh_imu_meas[0])
-#     end
-
-#     @info fresh_gps_meas
-
-#     # What are meas_var and cov?
-#     # Also, all we have for measurements is pos and velocities, how to get quaternions n such?
-
-#     mu_hat = rigid_body_dynamics(position, quaternion, velocity, angular_vel, Δt)
-#     A = jacfx(mu_prev)
-#     sigma_hat = A * sigma_prev * A' + sqrt_meas_cov # Is this right? taken from measurements module
-    
-#     # z: measurement received
-#     z = h(xₖ) + sqrt(meas_var)
-#     C = jac_hx(mu_hat)
-#     d = h(mu_hat) - C * mu_hat
-
-#     # sigma_new: The covariance
-#     sigma_new = inv(inv(sigma_hat) + C' * inv(meas_var) * C)
-#     # mu_new: Estimated measurement, different for gps or imu
-#     mu_new = sigma_new * (inv( sigma_hat) * mu_hat + C' * inv(meas_var) * (z - d))
-
-#     localization_state = MyLocalizationType(0,0.0)
-#     if isready(localization_state_channel)
-#         take!(localization_state_channel)
-#     end
-#     put!(localization_state_channel, localization_state)
-# end
-
-# Returns a 4x3 matrix the gradient of s;v with respect to r
-function gradsv(quaternion, angular_vel, Δt)
+function rigid_body_dynamics(position, quaternion, velocity, angular_vel, Δt)
     r = angular_vel
     mag = norm(r)
 
@@ -60,88 +7,123 @@ function gradsv(quaternion, angular_vel, Δt)
         vᵣ = zeros(3)
     else
         sᵣ = cos(mag*Δt / 2.0)
-        vᵣ = sin(mag*Δt / 2.0) * axis
+        vᵣ = sin(mag*Δt / 2.0) * (r / mag)
     end
 
     sₙ = quaternion[1]
     vₙ = quaternion[2:4]
-    
-    # [Sr; Vr] -> [S; V]
-    # Lower right of matrix is Sₙ * I + A
-    j4 = [
-        sₙ vₙ[1] vₙ[2] vₙ[3];
-        vₙ[1] sₙ -vₙ[3] vₙ[2];
-        vₙ[2] vₙ[3] sₙ -vₙ[1];
-        vₙ[3] -vₙ[2] vₙ[1] sₙ  
-        ]
 
-    j1mag = 1/mag * [r[1] r[2] r[3]]
-    j2mag = -sin(mag*Δt/2) * Δt/2
-    j3mag = sin(mag*Δt/2) * (-r/mag^2) + (r/mag * cos(mag*Δt/2)*Δt/2)
+    s = sₙ*sᵣ - vₙ'*vᵣ
+    v = sₙ*vᵣ+sᵣ*vₙ+vₙ×vᵣ
 
-    j2r = [0 0 0]
-    #sin(mag*Δt/2)/mag * I
-    j3r = [ 
-        sin(mag*Δt/2)/mag 0 0;
-        0 sin(mag*Δt/2)/mag 0;
-        0 0 sin(mag*Δt/2)/mag;
-        ]
-    grad = j4 * ([j2mag; j3mag] * j1mag + [j2r; j3r]) #This is jac of [s;v] wrt angular v
-    return grad
+    R = Rot_from_quat(quaternion)  
+
+    new_position = position + Δt * R * velocity
+    new_quaternion = [s; v]
+    new_velocity = velocity
+    new_angular_vel = angular_vel
+    return [new_position; new_quaternion; new_velocity; new_angular_vel]
 end
 
-function jacfx(position, q, velocity, angular_vel, t)
-    r = angular_vel
-    mag = norm(r)
+function f(x, Δt)
+    rigid_body_dynamics(x[1:3], x[4:7], x[8:10], x[11:13], Δt)
+end
 
+function Jac_x_f(x, Δt)
+    J = zeros(13, 13)
+
+    r = x[11:13]
+    mag = norm(r)
     if mag < 1e-5
         sᵣ = 1.0
         vᵣ = zeros(3)
     else
-        sᵣ = cos(mag*t / 2.0)
-        vᵣ = sin(mag*t / 2.0) * r/mag
+        sᵣ = cos(mag*Δt / 2.0)
+        vᵣ = sin(mag*Δt / 2.0) * (r / mag)
     end
 
-    sₙ = q[1]
-    vₙ = q[2:4]
+    sₙ = x[4]
+    vₙ = x[5:7]
 
     s = sₙ*sᵣ - vₙ'*vᵣ
-    v = sₙ*vᵣ+sᵣ*vₙ+cross(vₙ, vᵣ)
+    v = sₙ*vᵣ+sᵣ*vₙ+vₙ×vᵣ
 
-    gradrsv = gradsv(q, r, t)
+    R = Rot_from_quat([sₙ; vₙ])  
+    (J_R_q1, J_R_q2, J_R_q3, J_R_q4) = J_R_q([sₙ; vₙ])
+    
+    #new_position = position + Δt * R * velocity
+    #new_quaternion = [s; v]
+    #new_velocity = velocity
+    #new_angular_vel = angular_vel
+    
+    velocity = x[8:10]
 
-    jac = [
-        1 0 0 0 0 0 0 t 0 0 0 0 0;
-        0 1 0 0 0 0 0 0 t 0 0 0 0;
-        0 0 1 0 0 0 0 0 0 t 0 0 0;
-        0 0 0 sᵣ -[1 q[2] q[3]]*vᵣ [q[1] 1 q[3]]*vᵣ [q[1] q[2] 1]*vᵣ 0 0 0 gradrsv[1, 1] gradrsv[1, 2] gradrsv[1, 3];
-        0 0 0 vᵣ[1] sᵣ sin(mag*t/2)*r[3]/mag -sin(mag*t/2)*r[2]/mag 0 0 0 gradrsv[2, 1] gradrsv[2, 2] gradrsv[2, 3];
-        0 0 0 vᵣ[2] sin(mag*t/2)*r[3]/mag sᵣ -sin(mag*t/2)*r[1]/mag 0 0 0 gradrsv[3, 1] gradrsv[3, 2] gradrsv[3, 3];
-        0 0 0 vᵣ[3] sin(mag*t/2)*r[2]/mag -sin(mag*t/2)*r[1]/mag sᵣ 0 0 0 gradrsv[4, 1] gradrsv[4, 2] gradrsv[4, 3]
-        0 0 0 0 0 0 0 1 0 0 0 0 0;
-        0 0 0 0 0 0 0 0 1 0 0 0 0;
-        0 0 0 0 0 0 0 0 0 1 0 0 0;
-        0 0 0 0 0 0 0 0 0 0 1 0 0;
-        0 0 0 0 0 0 0 0 0 0 0 1 0;
-        0 0 0 0 0 0 0 0 0 0 0 0 1;
-    ]
+    J[1:3, 1:3] = I(3)
+    J[1:3, 4] = Δt * J_R_q1*velocity
+    J[1:3, 5] = Δt * J_R_q2*velocity
+    J[1:3, 6] = Δt * J_R_q3*velocity
+    J[1:3, 7] = Δt * J_R_q4*velocity
+    J[1:3, 8:10] = Δt * R
+    J[4, 4] = sᵣ
+    J[4, 5:7] = -vᵣ'
+    J[5:7, 4] = vᵣ
+    J[5:7, 5:7] = [sᵣ vᵣ[3] -vᵣ[2];
+                   -vᵣ[3] sᵣ vᵣ[1];
+                   vᵣ[2] -vᵣ[1] sᵣ]
 
-    # @info jac
-    return jac
+    if mag > 1e-5
+        Jsv_srvr = [sₙ -vₙ'
+                    vₙ [sₙ -vₙ[3] vₙ[2];
+                        vₙ[3] sₙ -vₙ[1];
+                        -vₙ[2] vₙ[1] sₙ]]
+        Jsrvr_mag = [-sin(mag*Δt / 2.0) * Δt / 2; sin(mag*Δt/2.0) * (-r / mag^2) + cos(mag*Δt/2)*Δt/2 * r/mag]
+        Jsrvr_r = [zeros(1,3); sin(mag*Δt / 2) / mag * I(3)]
+        Jmag_r = 1/mag * r'
+
+        J[4:7, 11:13] = Jsv_srvr * (Jsrvr_mag*Jmag_r + Jsrvr_r)
+    end
+    J[8:10, 8:10] = I(3)
+    J[11:13, 11:13] = I(3)
+    J
 end
 
 function h_gps(x)
     T = get_gps_transform()
     gps_loc_body = T*[zeros(3); 1.0]
-
-
     xyz_body = x[1:3] # position
     q_body = x[4:7] # quaternion
     Tbody = get_body_transform(q_body, xyz_body)
     xyz_gps = Tbody * [gps_loc_body; 1]
+    yaw = extract_yaw_from_quaternion(q_body)
+    meas = [xyz_gps[1:2]; yaw]
+end
 
-
-    gps_meas = xyz_gps[1:2]
+function Jac_h_gps(x)
+    T = get_gps_transform()
+    gps_loc_body = T*[zeros(3); 1.0]
+    xyz_body = x[1:3] # position
+    q_body = x[4:7] # quaternion
+    Tbody = get_body_transform(q_body, xyz_body)
+    xyz_gps = Tbody * [gps_loc_body; 1]
+    yaw = extract_yaw_from_quaternion(q_body)
+    #meas = [xyz_gps[1:2]; yaw]
+    J = zeros(3, 13)
+    (J_Tbody_xyz, J_Tbody_q) = J_Tbody(x)
+    for i = 1:3
+        J[1:2,i] = (J_Tbody_xyz[i]*[gps_loc_body; 1])[1:2]
+    end
+    for i = 1:4
+	J[1:2,3+i] = (J_Tbody_q[i]*[gps_loc_body; 1])[1:2]
+    end
+    w = q_body[1]
+    x = q_body[2]
+    y = q_body[3]
+    z = q_body[4]
+    J[3,4] = -(2 * z * (-1 + 2 * (y^2 + z^2)))/(4 * (x * y + w * z)^2 + (1 - 2 * (y^2 + z^2))^2)
+    J[3,5] = -(2 * y * (-1 + 2 * (y^2 + z^2)))/(4 * (x * y + w * z)^2 + (1 - 2 * (y^2 + z^2))^2)
+    J[3,6] = (2 * (x + 2 * x * y^2 + 4 * w * y * z - 2 * x * z^2))/(1 + 4 * y^4 + 8 * w * x * y * z + 4 * (-1 + w^2) * z^2 + 4 * z^4 + 4 * y^2 * (-1 + x^2 + 2 * z^2))
+    J[3,7] = (2 * (w - 2 * w * y^2 + 4 * x * y * z + 2 * w * z^2))/(1 + 4 * y^4 + 8 * w * x * y * z + 4 * (-1 + w^2) * z^2 + 4 * z^4 + 4 * y^2 * (-1 + x^2 + 2 * z^2))
+    J
 end
 
 
@@ -150,58 +132,15 @@ function h_imu(x)
     T_imu_body = invert_transform(T_body_imu)
     R = T_imu_body[1:3,1:3]
     t = T_imu_body[1:3,end]
-
-
     v_body = x[8:10] # linear velocity
     ω_body = x[11:13] # angular velocity
-
-
     ω_imu = R * ω_body
     v_imu = R * v_body + t × ω_imu
-
-
-    imu_meas = [v_imu, ω_imu]
+    meas = [v_imu, ω_imu]
 end
 
 
-function h_imu2(x)
-    vx = x[8]
-    vy = x[9]
-    vz = x[10]
-    wx = x[11]
-    wy = x[12]
-    wz = x[13]
-    v_imu_x = vx - 0.02*vz + 0.7*wy
-    v_imu_y = vy - 0.70028*wy
-    v_imu_z = vz + 0.02*vx +0.014*wy
-    w_imu_x = wx - 0.02*wz
-    w_imu_y = wy
-    w_imu_z = wz + 0.02*wx
-
-
-    h_imu = [v_imu_x v_imu_y v_imu_z;
-            w_imu_x w_imu_y w_imu_z]
-end
-
-
-function h_gps2(x)
-    p1 = x[1]
-    p2 = x[2]
-    p3 = x[3]
-    q1 = x[4]
-    q2 = x[5]
-    q3 = x[6]
-    q4 = x[7]
-    x_meas = -3(q1^2 + q2^2 - q3^2 - q4^4) + 2(q2*q3 - q1*q4) + 5.2(q1*q3 + q2*q4) + p1
-    y_meas = -6(q2*q3 + q1*q4) + (q1^2 - q2^2 + q3^2 - q4^4) + 5.2(q3*q4 - q1*q2) + p2
-    #z_meas = -6(q2*q4 - q1*q3) + 2(q1*q2 + q3*q4) + 2.6(q1^2 - q2^2 - q3^2 + q4^4) + p3
-
-
-    h_gps = [x_meas y_meas]
-end
-
-
-function jac_h_imu(x)
+function Jac_h_imu(x)
     jac =   [
             0 0 0 0 0 0 0 1 0 -0.02 0 0.7 0;
             0 0 0 0 0 0 0 0 1 0 -0.70028 0 0;
@@ -212,21 +151,3 @@ function jac_h_imu(x)
     ]
 end
 
-
-function jac_h_gps(x)
-    q1 = x[4]
-    q2 = x[5]
-    q3 = x[6]
-    q4 = x[7]
-
-
-    #x = [1 0 0 (-6q1 - 2q4 + 5.2q3) (-6q2 + 2q3 + 5.2q4) (6q3 + 2q2 + 5.2q1) (6q4 - 2q1 + 5.2q2)]
-    #y = [0 1 0 (-6q4 + 2q1 - 5.2q2) (-6q3 - 2q2 - 5.2q1) (-6q2 + 2q3 + 5.2q4) (-6q1 - 2q4 + 5.2q3)]
-    #z = [0 0 1 (6q3 + 2q2 + 5.2q1) (-6q4 + 2q1 - 5.2q2) (6q1 + 2q4 - 5.2q3) (-6q2 + 2q3 + 5.2q4)]
-
-
-    jac = [
-        1 0 0 (-6q1 - 2q4 + 5.2q3) (-6q2 + 2q3 + 5.2q4) (6q3 + 2q2 + 5.2q1) (6q4 - 2q1 + 5.2q2) 0 0 0 0 0 0;
-        0 1 0 (-6q4 + 2q1 - 5.2q2) (-6q3 - 2q2 - 5.2q1) (-6q2 + 2q3 + 5.2q4) (-6q1 - 2q4 + 5.2q3) 0 0 0 0 0 0
-    ]
-end

@@ -25,142 +25,74 @@ struct MyPerceptionType
     # size::SVector{3,Float64} # length, width, height of 3d bounding box centered at (position/orientation)
 end
 
-
-function test_algorithms(gt_channel,
-    localization_state_channel,
-    perception_state_channel,
-    ego_vehicle_id)
-    estimated_vehicle_states = Dict{Int,Tuple{Float64,Union{SimpleVehicleState,FullVehicleState}}}
-    gt_vehicle_states = Dict{Int,GroundTruthMeasurement}
-
-    t = time()
-    while true
-
-        while isready(gt_channel)
-            meas = take!(gt_channel)
-            id = meas.vehicle_id
-            if meas.time > gt_vehicle_states[id].time
-                gt_vehicle_states[id] = meas
-            end
-        end
-
-        # Test Localization
-        # latest_estimated_ego_state = fetch(localization_state_channel)
-        # latest_true_ego_state = gt_vehicle_states[ego_vehicle_id]
-        # if latest_estimated_ego_state.last_update < latest_true_ego_state.time - 0.5
-        #     @warn "Localization algorithm stale."
-        # else
-        #     estimated_xyz = latest_estimated_ego_state.position
-        #     true_xyz = latest_true_ego_state.position
-        #     position_error = norm(estimated_xyz - true_xyz)
-        #     t2 = time()
-        #     if t2 - t > 5.0
-        #         @info "Localization position error: $position_error"
-        #         t = t2
-        #     end
-        # end
-
-        # Test Perception
-        latest_perception_state = fetch(perception_state_channel)
-        last_perception_update = latest_perception_state.last_update
-        vehicles = last_perception_state.x
-
-        for vehicle in vehicles
-            xy_position = [vehicle.p1, vehicle.p2]
-            closest_id = 0
-            closest_dist = Inf
-            for (id, gt_vehicle) in gt_vehicle_states
-                if id == ego_vehicle_id
-                    continue
-                else
-                    gt_xy_position = gt_vehicle_position[1:2]
-                    dist = norm(gt_xy_position - xy_position)
-                    if dist < closest_dist
-                        closest_id = id
-                        closest_dist = dist
-                    end
-                end
-            end
-            paired_gt_vehicle = gt_vehicle_states[closest_id]
-
-            # compare estimated to GT
-
-            if last_perception_update < paired_gt_vehicle.time - 0.5
-                @info "Perception upate stale"
-            else
-                # compare estimated to true size
-                estimated_size = [vehicle.l, vehicle.w, vehicle.h]
-                actual_size = paired_gt_vehicle.size
-                @info "Estimated size error: $(norm(actual_size-estimated_size))"
-            end
-        end
-    end
-end
-
-
 function localize(gps_channel, imu_channel, localization_state_channel, gt_channels)
+    # Set up algorithm / initialize variables
+    x = []
+    P = Matrix{Float64}(I, 13, 13)   # 13x13 identity matrix
+    Q = Matrix{Float64}(I, 13, 13)   # 13x13 identity matrix
+    prevTime = time()
 
-    # @info "Starting localize..."
-    lats_longs = [[0.0, 0.0]]
-    vels = [[[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]]]
-    direction_vectors = [[0.0, 0.0, 0.0]]
     while true
-        sleep(0.0001) # Hogs all the cpu without this
-
-        if isready(gps_channel)
+        fresh_gps_meas = []
+        while isready(gps_channel)
             meas = take!(gps_channel)
-            push!(lats_longs, [meas.lat, meas.long])
-
-            pos_estimate = mean(lats_longs)
-            prev_state = fetch(localization_state_channel)
-            delta_pos = [pos_estimate[1] - prev_state.position[1], pos_estimate[2] - prev_state.position[2], 0.0]
-            push!(direction_vectors, delta_pos)
+            push!(fresh_gps_meas, meas)
         end
-
-        if isready(imu_channel)
+        fresh_imu_meas = []
+        while isready(imu_channel)
             meas = take!(imu_channel)
-            push!(vels, [meas.linear_vel, meas.angular_vel])
+            push!(fresh_imu_meas, meas)
+        end
+       
+        newTime = time()
+        dt = newTime - prevTime
+        imu_meas = zeros(3, 2)
+        gps_meas = zeros(3)
+
+        if(!isempty(fresh_imu_meas))
+            imu_meas = fresh_imu_meas[end]
+        end
+        if(!isempty(fresh_gps_meas))
+            gps_meas = fresh_gps_meas[end]
         end
 
-        if length(lats_longs) > 1
-            old_meas = popfirst!(lats_longs)
+        # Initialize state using first GPS measurement if necessary
+        if isempty(x) && !isempty(gps_meas)
+            x = [gps_meas[1][2:3]; zeros(10, 1)]
         end
 
-        if length(vels) > 1
-            old_meas = popfirst!(vels)
+        # Predict the state and covariance
+        x_pred = f(x, dt)    # Nonlinear state transition function
+        F = Jac_x_f(x, dt)   # Jacobian of the state transition function
+        P_pred = F * P * F' + Q   # Predicted covariance matrix
+
+        # Predict the measurement and calculate the measurement residual
+        if (gps_meas[1] > imu_meas[1])
+            # GPS measurement is more recent
+            z_pred_gps = h_gps(x_pred)  # Nonlinear measurement function for GPS
+            H = Jac_h_gps(x_pred)   # Jacobian of the measurement function for GPS
+            residual = gps_meas[2:end] - z_pred_gps    # Measurement residual for GPS
+            R = Diagonal([1.0, 1.0]) * 0.01
+        else
+            # IMU measurement is more recent or they are simultaneous
+            z_pred_imu = h_imu(x_pred)  # Nonlinear measurement function for IMU
+            H = Jac_h_imu(x_pred)   # Jacobian of the measurement function for IMU
+            residual = imu_meas[2:end] - z_pred_imu  # Measurement residual for IMU
+            R = Diagonal([0.01, 0.01, 0.01, 0.01, 0.01, 0.01])
         end
 
-        pos_estimate = mean(lats_longs)
+        # Compute the Kalman gain
+        S = H * P_pred * H' + R   # Covariance matrix of the measurement residual
+        K = P_pred * H' * inv(S)   # Kalman gain
 
-        if length(direction_vectors) > 50
-            old_meas = popfirst!(direction_vectors)
-        end
-
-        vels_estimate = mean(vels)
-        pos_estimate = [pos_estimate[1], pos_estimate[2], 2.64]
-
-        avg_angle = mean(direction_vectors)
-        forward = avg_angle
-        # if norm(avg_angle) != 0
-        #     forward = avg_angle / norm(avg_angle) # Turning into unit vector makes it NaN
-        # end
-        up = [0, 0, 1]
-        # right = cross(forward, up)
-        right = [0.0, 0.0, 0.0]
-
-        gps_offset = Vector([1.0, 3.0, 2.64])
-        # directional_offset = gps_offset[1]*forward + gps_offset[2]*right + gps_offset[3]*up
-        # if !isnan(directional_offset[1])
-        #     pos_estimate = pos_estimate + directional_offset
-        # end
-
-
-        orientation = QuatVec(forward)
-        orientation = [orientation[1], orientation[2], orientation[3], orientation[4]]
-        localization_state = MyLocalizationType(time(), pos_estimate, orientation, vels_estimate[1], vels_estimate[2])
-
+        # Update the state and covariance using the Kalman gain and measurement residual
+        x = x_pred + K * residual   # Updated state estimate
+        P = (I - K * H) * P_pred   # Updated covariance matrix
+        prevTime = newTime # update timeStep
+       
+        localization_state = MyLocalizationType(x[1:3], x[4:7], x[8:10], x[11:13], newTime)
         if isready(localization_state_channel)
-            take!(localization_state_channel)
+             take!(localization_state_channel)
         end
         put!(localization_state_channel, localization_state)
     end
