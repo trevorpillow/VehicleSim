@@ -83,8 +83,11 @@ function keyboard_client(host::IPAddr=IPv4(0), port=4444; v_step = 1.0, s_step =
     steering_angle = 0.0
     controlled = true
 
-    @async localize(gps_channel, imu_channel, localization_state_channel, gt_channel)
+    # @async localize(gps_channel, imu_channel, localization_state_channel, gt_channel)
     # localize(gps_channel, imu_channel, localization_state_channel, gt_channel)
+
+    sleep(1)
+    gt = fetch(gt_channel)
 
     @info "Press 'q' at any time to terminate vehicle."
     while controlled && isopen(socket)
@@ -117,16 +120,26 @@ function keyboard_client(host::IPAddr=IPv4(0), port=4444; v_step = 1.0, s_step =
         
         cmd = VehicleCommand(steering_angle, target_velocity, controlled)
         serialize(socket, cmd)
-        
-        if isready(localization_state_channel)
-            state_est = fetch(localization_state_channel)
-            pos_est = state_est.position
-            linear_est = state_est.linear_vel
-            angular_est = state_est.angular_vel
-            orientation_est = state_est.orientation
+
+        while isready(gt_channel)
+            meas = take!(gt_channel)
+            if meas.time > gt.time
+                gt = meas
+            end
         end
 
-        gps_offset = Vector([1.0, 3.0, 2.64]) # What is the offset of the GPS relative to the center of the car?
+        @info("-----GT-----")
+        @info(gt)
+        
+        # if isready(localization_state_channel)
+        #     state_est = fetch(localization_state_channel)
+        #     pos_est = state_est.position
+        #     linear_est = state_est.linear_vel
+        #     angular_est = state_est.angular_vel
+        #     orientation_est = state_est.orientation
+        # end
+
+        # gps_offset = Vector([1.0, 3.0, 2.64]) # What is the offset of the GPS relative to the center of the car?
         # offset gps forward 3, down 1, right 1
         # PROBLEM: IMU is always moving "forward" so this calculation is useless
         # forward = Vector(linear_est/norm(linear_est))

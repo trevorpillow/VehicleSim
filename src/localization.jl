@@ -130,19 +130,19 @@ function jacfx(position, q, velocity, angular_vel, t)
     return jac
 end
 
-function h_gps(x)
-    T = get_gps_transform()
-    gps_loc_body = T*[zeros(3); 1.0]
+# function h_gps(x)
+#     T = get_gps_transform()
+#     gps_loc_body = T*[zeros(3); 1.0]
 
 
-    xyz_body = x[1:3] # position
-    q_body = x[4:7] # quaternion
-    Tbody = get_body_transform(q_body, xyz_body)
-    xyz_gps = Tbody * [gps_loc_body; 1]
+#     xyz_body = x[1:3] # position
+#     q_body = x[4:7] # quaternion
+#     Tbody = get_body_transform(q_body, xyz_body)
+#     xyz_gps = Tbody * [gps_loc_body; 1]
 
 
-    gps_meas = xyz_gps[1:2]
-end
+#     gps_meas = xyz_gps[1:2]
+# end
 
 
 function h_imu(x)

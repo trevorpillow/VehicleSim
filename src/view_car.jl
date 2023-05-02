@@ -21,10 +21,10 @@ end
 
 
 function remove_grid!(vis)
-    delete!(vis["/Grid"])
-    delete!(vis["/Axes"])
+    setvisible!(vis["/Grid"], false)
+    setvisible!(vis["/Axes"], false)
     setcameratarget!(vis, [0,0,0])
-    setcameraposition!(vis, [0, -3, 1])
+    setcameraposition!(vis, [0, 0, 20])
 end
 
 function configure_car!(mvis, state, joints, config)

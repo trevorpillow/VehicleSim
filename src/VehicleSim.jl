@@ -22,6 +22,8 @@ using Symbolics
 using ProgressMeter
 using Statistics
 using Quaternionic
+using Plots
+using Colors
 
 include("view_car.jl")
 include("objects.jl")

@@ -410,7 +410,7 @@ function my_client(host::IPAddr=IPv4(0), port=4444)
     localization_state_channel = Channel{MyLocalizationType}(1)
     perception_state_channel = Channel{MyPerceptionType}(1)
 
-    valid_ids = Condition()
+    # valid_ids = Condition()
     target_id = 0 # (not a valid segment, will be overwritten by message)
     ego_id = 0 # (not a valid id, will be overwritten by message. This is used for discerning ground-truth messages)
 
@@ -462,12 +462,9 @@ function my_client(host::IPAddr=IPv4(0), port=4444)
     # wait(valid_ids)
     sleep(2)
 
-    # @async 
-    # @async localize(gps_channel, imu_channel, localization_state_channel, gt_channel) #FIXME: Remove gt channel once ready
-    # @async perception(cam_channel, localization_state_channel, perception_state_channel)
-    t = @async decision_making(localization_state_channel, perception_state_channel, map_segments, target_id, socket, gt_channel)
-    errormonitor(t)
-    return t
+    @async localize(gps_channel, imu_channel, localization_state_channel, gt_channel) #FIXME: Remove gt channel once ready
+    @async perception(cam_channel, gt_channel, localization_state_channel, perception_state_channel)
+    @async decision_making(localization_state_channel, perception_state_channel, map_segments, target_id, socket, gt_channel)
 
     # @async test_algorithms(gt_channel, localization_state_channel, perception_state_channel, ego_vehicle_id)
 end

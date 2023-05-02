@@ -9,6 +9,7 @@ function find_segment(position, map_segments, sub_map=keys(map_segments))
             return id
         end
     end
+    return 0
 end
 
 function inside_segment(position, segment)
@@ -181,4 +182,35 @@ function construct_path(ancestors, start_id, target_id)
     end
 
     path, path_index
+end
+
+function plot_path(map_segents, points)
+    xs = Float64[]
+    ys = Float64[]
+    for segment in values(map_segents)
+        for lane_boundary in segment.lane_boundaries
+            pt_a, pt_b = lane_boundary.pt_a, lane_boundary.pt_b
+            push!(xs, pt_a[1], pt_b[1])
+            push!(ys, pt_a[2], pt_b[2])
+        end
+    end
+
+    # setting start and eng ids manually for now, will accept as function parameters later
+    #waypoints = a_star(segment_maps, 67, 4, 2.0)
+
+    # Create a scatter plot for the lane boundaries
+    plot = scatter(xs, ys, markersize=3, markercolor=:red, legend=false)
+
+    # Create a color gradient
+    num_waypoints = length(points)
+    colors = palette(:viridis, num_waypoints)
+
+    # Add waypoints to the plot with gradually changing colors
+    for (i, point) in enumerate(points)
+        scatter!(plot, [point[1]], [point[2]], markersize=3, markercolor=colors[i], legend=false)
+    end
+
+    xlims!(minimum(xs) - 10, maximum(xs) + 10)
+    ylims!(minimum(ys) - 10, maximum(ys) + 10)
+    savefig("path.png")
 end
